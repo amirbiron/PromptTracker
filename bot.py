@@ -2,6 +2,8 @@
 PromptTracker Bot - בוט לניהול פרומפטים
 """
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -58,6 +60,53 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+health_server = None
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+    """שרת HTTP קטן כדי להחזיק פורט פתוח לרנדר"""
+
+    def do_GET(self):
+        self._send_response()
+
+    def do_HEAD(self):
+        self._send_response(send_body=False)
+
+    def _send_response(self, send_body: bool = True):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        if send_body:
+            self.wfile.write(b"ok")
+
+    def log_message(self, format, *args):
+        # לא לרשום כל בקשה לכלוג
+        return
+
+
+def start_healthcheck_server():
+    """הפעלת שרת בריאות מינימלי כדי שלרנדר יהיה פורט פתוח"""
+    global health_server
+
+    if not config.ENABLE_HEALTHCHECK_SERVER:
+        logger.info("Health-check server disabled via ENABLE_HEALTHCHECK_SERVER env var")
+        return
+
+    port = config.HEALTHCHECK_PORT
+    try:
+        health_server = HTTPServer(("", port), HealthHandler)
+    except OSError as exc:
+        logger.warning("Failed to start health-check server on port %s: %s", port, exc)
+        return
+
+    thread = threading.Thread(
+        target=health_server.serve_forever,
+        name="render-healthcheck-server",
+        daemon=True
+    )
+    thread.start()
+    logger.info("Health-check server is listening on port %s", port)
 
 # ========== פקודות בסיס ==========
 
@@ -365,6 +414,7 @@ def main():
     application.add_error_handler(error_handler)
     
     # הפעלת הבוט
+    start_healthcheck_server()
     logger.info("🚀 Bot is starting...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 

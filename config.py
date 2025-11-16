@@ -41,3 +41,10 @@ MAX_PROMPT_LENGTH = 4000  # אורך מקסימלי לפרומפט
 PROMPTS_PER_PAGE = 10     # כמה פרומפטים בעמוד
 MAX_TAGS = 10             # מקסימום תגיות לפרומפט
 TRASH_RETENTION_DAYS = 30 # כמה ימים לשמור פרומפטים במחיקה
+
+# Health-check server (לרנדר)
+ENABLE_HEALTHCHECK_SERVER = os.getenv('ENABLE_HEALTHCHECK_SERVER', 'true').lower() not in {'false', '0', 'no', 'off'}
+try:
+    HEALTHCHECK_PORT = int(os.getenv('PORT') or os.getenv('HEALTHCHECK_PORT') or 8000)
+except (TypeError, ValueError):
+    HEALTHCHECK_PORT = 8000
