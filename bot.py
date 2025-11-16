@@ -42,7 +42,11 @@ from handlers.manage import (
     cancel_delete,
     view_favorites,
     EDITING_CONTENT,
-    EDITING_TITLE
+    EDITING_TITLE,
+    start_change_category,
+    apply_new_category,
+    cancel_change_category,
+    CHANGING_CATEGORY
 )
 from handlers.search import (
     start_search,
@@ -52,6 +56,14 @@ from handlers.search import (
     show_tags_menu,
     show_popular_prompts,
     WAITING_FOR_SEARCH_QUERY
+)
+from handlers.tags import (
+    manage_tags,
+    start_add_tag,
+    receive_new_tag,
+    remove_tag,
+    cancel_add_tag,
+    WAITING_FOR_NEW_TAG
 )
 
 # הגדרת logging
@@ -168,6 +180,31 @@ async def help_command(update: Update, context):
         help_text,
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
+    )
+
+async def show_settings(update: Update, context):
+    """תפריט הגדרות בסיסי"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    user = update.effective_user
+    user_doc = db.get_or_create_user(user.id, user.username, user.first_name)
+
+    settings = user_doc.get('settings', {})
+    text = (
+        "⚙️ *הגדרות*\n\n"
+        f"הצגת מזהים: {'מופעל' if settings.get('show_ids') else 'כבוי'}\n"
+        f"קיצור כותרות: {'מופעל' if settings.get('short_titles') else 'כבוי'}\n"
+        f"הצגת תגיות: {'מופעל' if settings.get('show_tags') else 'כבוי'}\n"
+        f"אישור העתקה: {'מופעל' if settings.get('copy_confirmation') else 'כבוי'}\n"
+        f"ערכת נושא: {settings.get('theme', 'dark')}\n\n"
+        "(שינויים מתקדמים יגיעו בקרוב)"
+    )
+
+    await (query.edit_message_text if query else update.message.reply_text)(
+        text,
+        parse_mode='Markdown',
+        reply_markup=back_button("back_main")
     )
 
 async def stats_command(update: Update, context):
@@ -390,6 +427,20 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_save)]
     )
     application.add_handler(edit_title_conv)
+
+    # Conversation Handler לשינוי קטגוריה
+    change_cat_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_change_category, pattern="^chcat_")
+        ],
+        states={
+            CHANGING_CATEGORY: [
+                CallbackQueryHandler(apply_new_category, pattern="^cat_")
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_change_category)]
+    )
+    application.add_handler(change_cat_conv)
     
     # Callback handlers
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^my_prompts$"))
@@ -405,6 +456,23 @@ def main():
     application.add_handler(CallbackQueryHandler(show_categories_menu, pattern="^categories$"))
     application.add_handler(CallbackQueryHandler(filter_by_category, pattern="^cat_"))
     application.add_handler(CallbackQueryHandler(show_tags_menu, pattern="^tags$"))
+    application.add_handler(CallbackQueryHandler(manage_tags, pattern="^tags_"))
+    application.add_handler(CallbackQueryHandler(remove_tag, pattern="^rmtag_"))
+    application.add_handler(CallbackQueryHandler(show_settings, pattern="^settings$"))
+
+    # Conversation Handler להוספת תגית
+    tags_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_add_tag, pattern="^addtag_")
+        ],
+        states={
+            WAITING_FOR_NEW_TAG: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_tag)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_add_tag)]
+    )
+    application.add_handler(tags_conv)
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
     
     # Callback כללי

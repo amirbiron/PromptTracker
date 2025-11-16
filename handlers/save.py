@@ -13,17 +13,25 @@ WAITING_FOR_PROMPT, WAITING_FOR_TITLE, WAITING_FOR_CATEGORY = range(3)
 async def start_save_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """התחלת תהליך שמירת פרומפט"""
     query = update.callback_query
-    await query.answer()
-    
-    await query.edit_message_text(
+    text = (
         "📝 *שמירת פרומפט חדש*\n\n"
         "שלח לי את הפרומפט שברצונך לשמור.\n"
         "אתה יכול גם להעביר (Forward) הודעה קיימת.\n\n"
-        "💡 _טיפ: הפרומפט יכול להיות עד 4000 תווים_",
-        parse_mode='Markdown',
-        reply_markup=back_button("back_main")
+        "💡 _טיפ: הפרומפט יכול להיות עד 4000 תווים_"
     )
-    
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=back_button("back_main")
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=back_button("back_main")
+        )
     return WAITING_FOR_PROMPT
 
 async def receive_prompt_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,7 +64,7 @@ async def receive_prompt_content(update: Update, context: ContextTypes.DEFAULT_T
         f"✅ הפרומפט התקבל!\n\n"
         f"📄 *תצוגה מקדימה:*\n"
         f"_{preview}_\n\n"
-        f"📋 כעת, שלח כותרת לפרומפט (או שלח /skip לדלג):",
+        f"📋 כעת, שלח כותרת לפרומפט (או שלח דלג):",
         parse_mode='Markdown'
     )
     
@@ -66,7 +74,7 @@ async def receive_prompt_title(update: Update, context: ContextTypes.DEFAULT_TYP
     """קבלת כותרת לפרומפט"""
     title = update.message.text
     
-    if title == '/skip':
+    if title.strip() in ['/skip', 'דלג']:
         # שימוש בכותרת אוטומטית
         content = context.user_data.get('new_prompt_content', '')
         title = content[:50] + "..." if len(content) > 50 else content
