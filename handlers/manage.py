@@ -166,6 +166,28 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=keyboard
         )
 
+async def handle_view_command_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """תמיכה בפקודת /view וב-/view_<id> הנשלחים כטקסט"""
+    message = update.message
+    prompt_id = None
+
+    if message and message.text:
+        text = message.text.strip()
+        # צורה 1: /view_<id>
+        if text.startswith('/view_'):
+            prompt_id = text.split('/view_', 1)[1].strip()
+        # צורה 2: /view <id>
+        elif context.args:
+            prompt_id = context.args[0]
+
+    if not prompt_id:
+        await update.message.reply_text("⚠️ שימוש: /view <prompt_id>")
+        return
+
+    # איחוד הזרימה דרך נתיב ה-callback הקיים
+    context.user_data['callback_data'] = f"view_{prompt_id}"
+    await view_prompt_details(update, context)
+
 async def copy_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """העתקת פרומפט"""
     query = update.callback_query

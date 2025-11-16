@@ -30,6 +30,7 @@ from handlers.save import (
 from handlers.manage import (
     view_my_prompts,
     view_prompt_details,
+    handle_view_command_text,
     copy_prompt,
     toggle_favorite,
     start_edit_prompt,
@@ -372,9 +373,12 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("list", view_my_prompts))
+    application.add_handler(CommandHandler("view", handle_view_command_text))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("trash", trash_command))
     application.add_handler(CommandHandler("restore", restore_command))
+    # תמיכה גם בצורה /view_<id>
+    application.add_handler(MessageHandler(filters.Regex(r"^/view_[0-9a-fA-F]{24}$"), handle_view_command_text))
     
     # Conversation Handler לשמירת פרומפט
     save_conv = ConversationHandler(
