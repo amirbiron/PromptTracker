@@ -13,16 +13,25 @@ WAITING_FOR_SEARCH_QUERY = 0
 async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """התחלת חיפוש"""
     query = update.callback_query
-    await query.answer()
-    
-    await query.edit_message_text(
+    text = (
         "🔍 *חיפוש פרומפטים*\n\n"
         "שלח מילת חיפוש או ביטוי לחיפוש בכל הפרומפטים שלך.\n\n"
         "💡 _טיפ: החיפוש מתבצע בכותרת ובתוכן הפרומפט_\n\n"
-        "או שלח /cancel לביטול.",
-        parse_mode='Markdown',
-        reply_markup=back_button("back_main")
+        "או שלח /cancel לביטול."
     )
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=back_button("back_main")
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=back_button("back_main")
+        )
     
     return WAITING_FOR_SEARCH_QUERY
 

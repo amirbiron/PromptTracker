@@ -10,13 +10,15 @@ from keyboards import (
     edit_menu_keyboard,
     confirm_keyboard,
     back_button,
-    prompt_list_item_keyboard
+    prompt_list_item_keyboard,
+    category_keyboard
 )
 import config
 from bson import ObjectId
 
 # States
 EDITING_CONTENT, EDITING_TITLE = range(2)
+CHANGING_CATEGORY = 2
 
 async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """הצגת רשימת הפרומפטים"""
@@ -95,12 +97,25 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """הצגת פרומפט מלא"""
     query = update.callback_query
+    prompt_id = None
     if query:
         await query.answer()
-        prompt_id = query.data.replace('view_', '')
-    else:
-        # מפקודה /view_id
-        prompt_id = context.args[0] if context.args else None
+        data = query.data
+        if isinstance(data, str) and data.startswith('view_'):
+            prompt_id = data.replace('view_', '')
+    # Fallback: when another action wants to refresh details
+    if not prompt_id:
+        cb = context.user_data.get('callback_data') if hasattr(context, 'user_data') else None
+        if isinstance(cb, str) and cb.startswith('view_'):
+            prompt_id = cb.replace('view_', '')
+            # clear the helper to avoid stale usage
+            try:
+                context.user_data.pop('callback_data', None)
+            except Exception:
+                pass
+    # From command argument
+    if not prompt_id:
+        prompt_id = context.args[0] if getattr(context, 'args', None) else None
     
     if not prompt_id:
         return
@@ -201,6 +216,7 @@ async def toggle_favorite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("💔 הוסר ממועדפים")
     
     # רענון התצוגה
+    context.user_data['callback_data'] = f"view_{prompt_id}"
     await view_prompt_details(update, context)
 
 async def start_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -276,6 +292,57 @@ async def start_edit_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     return EDITING_TITLE
+
+async def start_change_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """התחלת שינוי קטגוריה"""
+    query = update.callback_query
+    await query.answer()
+    prompt_id = query.data.replace('chcat_', '')
+    context.user_data['changing_category_for'] = prompt_id
+    await query.edit_message_text(
+        "📁 *שינוי קטגוריה*\n\nבחר קטגוריה חדשה:",
+        parse_mode='Markdown',
+        reply_markup=category_keyboard(include_all=False)
+    )
+    return CHANGING_CATEGORY
+
+async def apply_new_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """יישום קטגוריה חדשה לפרומפט"""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    prompt_id = context.user_data.get('changing_category_for')
+    if not prompt_id:
+        await query.edit_message_text("⚠️ שגיאה: לא נמצא פרומפט לשינוי קטגוריה.")
+        return ConversationHandler.END
+    category = query.data.replace('cat_', '')
+    success = db.update_prompt(prompt_id, user.id, {'category': category})
+    if success:
+        await query.edit_message_text(
+            "✅ הקטגוריה עודכנה בהצלחה!",
+            reply_markup=back_button(f"view_{prompt_id}")
+        )
+    else:
+        await query.edit_message_text("⚠️ שגיאה בעדכון הקטגוריה")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def cancel_change_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ביטול שינוי קטגוריה"""
+    prompt_id = context.user_data.get('changing_category_for')
+    context.user_data.clear()
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            "❌ שינוי הקטגוריה בוטל.",
+            reply_markup=back_button(f"view_{prompt_id}" if prompt_id else "back_main")
+        )
+    else:
+        await update.message.reply_text(
+            "❌ שינוי הקטגוריה בוטל.",
+            reply_markup=back_button(f"view_{prompt_id}" if prompt_id else "back_main")
+        )
+    return ConversationHandler.END
 
 async def receive_new_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """קבלת כותרת חדשה"""
