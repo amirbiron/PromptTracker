@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from database import db
 from keyboards import category_keyboard, prompt_actions_keyboard, back_button
 import config
+from utils import escape_html
 
 # States for conversation
 WAITING_FOR_PROMPT, WAITING_FOR_TITLE, WAITING_FOR_CATEGORY = range(3)
@@ -14,22 +15,22 @@ async def start_save_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """התחלת תהליך שמירת פרומפט"""
     query = update.callback_query
     text = (
-        "📝 *שמירת פרומפט חדש*\n\n"
+        "📝 <b>שמירת פרומפט חדש</b>\n\n"
         "שלח לי את הפרומפט שברצונך לשמור.\n"
         "אתה יכול גם להעביר (Forward) הודעה קיימת.\n\n"
-        "💡 _טיפ: הפרומפט יכול להיות עד 4000 תווים_"
+        "💡 <i>טיפ: הפרומפט יכול להיות עד 4000 תווים</i>"
     )
     if query:
         await query.answer()
         await query.edit_message_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
     else:
         await update.message.reply_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
     return WAITING_FOR_PROMPT
@@ -62,10 +63,10 @@ async def receive_prompt_content(update: Update, context: ContextTypes.DEFAULT_T
     
     await update.message.reply_text(
         f"✅ הפרומפט התקבל!\n\n"
-        f"📄 *תצוגה מקדימה:*\n"
-        f"_{preview}_\n\n"
+        f"📄 <b>תצוגה מקדימה:</b>\n"
+        f"<i>{escape_html(preview)}</i>\n\n"
         f"📋 כעת, שלח כותרת לפרומפט (או שלח דלג):",
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     
     return WAITING_FOR_TITLE
@@ -83,9 +84,9 @@ async def receive_prompt_title(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # בקשת קטגוריה
     await update.message.reply_text(
-        f"✅ הכותרת נשמרה: *{title}*\n\n"
+        f"✅ הכותרת נשמרה: <b>{escape_html(title)}</b>\n\n"
         f"📁 כעת, בחר קטגוריה:",
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=category_keyboard(include_all=False)
     )
     
@@ -117,13 +118,13 @@ async def receive_prompt_category(update: Update, context: ContextTypes.DEFAULT_
     emoji = config.CATEGORY_EMOJIS.get(category, '📄')
     
     await query.edit_message_text(
-        f"✅ *הפרומפט נשמר בהצלחה!*\n\n"
-        f"📋 *{title}*\n"
-        f"📁 קטגוריה: {emoji} {category}\n"
+        f"✅ <b>הפרומפט נשמר בהצלחה!</b>\n\n"
+        f"📋 <b>{escape_html(title)}</b>\n"
+        f"📁 קטגוריה: {emoji} {escape_html(category)}\n"
         f"📏 אורך: {len(content)} תווים\n"
-        f"🆔 מזהה: `{str(prompt['_id'])}`\n\n"
-        f"_הפרומפט זמין לשימוש!_",
-        parse_mode='Markdown',
+        f"🆔 מזהה: <code>{str(prompt['_id'])}</code>\n\n"
+        f"<i>הפרומפט זמין לשימוש!</i>",
+        parse_mode='HTML',
         reply_markup=prompt_actions_keyboard(str(prompt['_id']))
     )
     

@@ -15,6 +15,7 @@ from keyboards import (
 )
 import config
 from bson import ObjectId
+from utils import escape_html, code_block, code_inline
 
 # States
 EDITING_CONTENT, EDITING_TITLE = range(2)
@@ -39,25 +40,25 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_count = db.count_prompts(user.id)
     
     if not prompts:
-        text = "📋 *הפרומפטים שלי*\n\n"
+        text = "📋 <b>הפרומפטים שלי</b>\n\n"
         text += "אין לך פרומפטים שמורים עדיין.\n\n"
         text += "השתמש ב-/save כדי לשמור את הפרומפט הראשון שלך! 💾"
         
         if query:
             await query.edit_message_text(
                 text,
-                parse_mode='Markdown',
+                parse_mode='HTML',
                 reply_markup=back_button("back_main")
             )
         else:
             await update.message.reply_text(
                 text,
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
         return
     
     # בניית הטקסט
-    text = f"📋 *הפרומפטים שלי* ({total_count} סה״כ)\n\n"
+    text = f"📋 <b>הפרומפטים שלי</b> ({total_count} סה״כ)\n\n"
     
     for i, prompt in enumerate(prompts, start=skip + 1):
         emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
@@ -67,16 +68,16 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(title) > 40:
             title = title[:40] + "..."
         
-        text += f"{i}. {fav}{emoji} *{title}*\n"
-        text += f"   📁 {prompt['category']} | "
+        text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
+        text += f"   📁 {escape_html(prompt['category'])} | "
         text += f"🔢 {prompt['use_count']} שימושים\n"
         
         # תגיות
         if prompt.get('tags'):
-            tags_str = " ".join([f"#{tag}" for tag in prompt['tags'][:3]])
+            tags_str = " ".join([f"#{escape_html(tag)}" for tag in prompt['tags'][:3]])
             text += f"   🏷️ {tags_str}\n"
         
-        text += f"   /view\\_{str(prompt['_id'])}\n\n"
+        text += f"   /view_{str(prompt['_id'])}\n\n"
     
     # דפדוף
     total_pages = (total_count + config.PROMPTS_PER_PAGE - 1) // config.PROMPTS_PER_PAGE
@@ -84,13 +85,13 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         await query.edit_message_text(
             text,
-            parse_mode='MarkdownV2',
+            parse_mode='HTML',
             reply_markup=pagination_keyboard(page, total_pages, "page")
         )
     else:
         await update.message.reply_text(
             text,
-            parse_mode='MarkdownV2',
+            parse_mode='HTML',
             reply_markup=pagination_keyboard(page, total_pages, "page")
         )
 
@@ -135,19 +136,19 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
     emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
     fav = "⭐ " if prompt.get('is_favorite') else ""
     
-    text = f"{fav}*{prompt['title']}*\n"
+    text = f"{fav}<b>{escape_html(prompt['title'])}</b>\n"
     text += f"{'━' * 30}\n\n"
-    text += f"{prompt['content']}\n\n"
+    text += f"{escape_html(prompt['content'])}\n\n"
     text += f"{'━' * 30}\n"
-    text += f"📊 *פרטים:*\n"
-    text += f"• מזהה: `{prompt_id}`\n"
-    text += f"• קטגוריה: {emoji} {prompt['category']}\n"
+    text += f"📊 <b>פרטים:</b>\n"
+    text += f"• מזהה: {code_inline(prompt_id)}\n"
+    text += f"• קטגוריה: {emoji} {escape_html(prompt['category'])}\n"
     text += f"• אורך: {prompt['length']} תווים\n"
     text += f"• שימושים: {prompt['use_count']} פעמים\n"
     text += f"• נוצר: {prompt['created_at'].strftime('%d/%m/%Y')}\n"
     
     if prompt.get('tags'):
-        tags_str = " ".join([f"#{tag}" for tag in prompt['tags']])
+        tags_str = " ".join([f"#{escape_html(tag)}" for tag in prompt['tags']])
         text += f"• תגיות: {tags_str}\n"
     
     keyboard = prompt_actions_keyboard(prompt_id, prompt.get('is_favorite', False))
@@ -155,13 +156,13 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query:
         await query.edit_message_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=keyboard
         )
     else:
         await update.message.reply_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=keyboard
         )
 
@@ -185,10 +186,12 @@ async def copy_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # שליחת הפרומפט כהודעה שניתן להעתיק
     await context.bot.send_message(
         chat_id=user.id,
-        text=f"📋 *{prompt['title']}*\n\n"
-             f"```\n{prompt['content']}\n```\n\n"
-             f"_לחץ על הטקסט כדי להעתיק_",
-        parse_mode='Markdown'
+        text=(
+            f"📋 <b>{escape_html(prompt['title'])}</b>\n\n"
+            f"{code_block(prompt['content'])}\n\n"
+            f"<i>לחץ על הטקסט כדי להעתיק</i>"
+        ),
+        parse_mode='HTML'
     )
     
     await query.answer("✅ הפרומפט נשלח! העתק את הטקסט מההודעה", show_alert=False)
@@ -227,9 +230,9 @@ async def start_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt_id = query.data.replace('edit_', '')
     
     await query.edit_message_text(
-        "✏️ *עריכת פרומפט*\n\n"
+        "✏️ <b>עריכת פרומפט</b>\n\n"
         "מה תרצה לערוך?",
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=edit_menu_keyboard(prompt_id)
     )
 
@@ -242,10 +245,10 @@ async def start_edit_content(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['editing_prompt_id'] = prompt_id
     
     await query.edit_message_text(
-        "📝 *עריכת תוכן*\n\n"
+        "📝 <b>עריכת תוכן</b>\n\n"
         "שלח את התוכן החדש לפרומפט.\n\n"
         "או שלח /cancel לביטול.",
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     
     return EDITING_CONTENT
@@ -285,10 +288,10 @@ async def start_edit_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['editing_prompt_id'] = prompt_id
     
     await query.edit_message_text(
-        "📋 *עריכת כותרת*\n\n"
+        "📋 <b>עריכת כותרת</b>\n\n"
         "שלח את הכותרת החדשה.\n\n"
         "או שלח /cancel לביטול.",
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     
     return EDITING_TITLE
@@ -300,8 +303,8 @@ async def start_change_category(update: Update, context: ContextTypes.DEFAULT_TY
     prompt_id = query.data.replace('chcat_', '')
     context.user_data['changing_category_for'] = prompt_id
     await query.edit_message_text(
-        "📁 *שינוי קטגוריה*\n\nבחר קטגוריה חדשה:",
-        parse_mode='Markdown',
+        "📁 <b>שינוי קטגוריה</b>\n\nבחר קטגוריה חדשה:",
+        parse_mode='HTML',
         reply_markup=category_keyboard(include_all=False)
     )
     return CHANGING_CATEGORY
@@ -375,10 +378,10 @@ async def delete_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt_id = query.data.replace('delete_', '')
     
     await query.edit_message_text(
-        "⚠️ *מחיקת פרומפט*\n\n"
+        "⚠️ <b>מחיקת פרומפט</b>\n\n"
         "האם אתה בטוח שברצונך למחוק את הפרומפט?\n"
         "ניתן יהיה לשחזר אותו מסל המחזור תוך 30 יום.",
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=confirm_keyboard('delete', prompt_id)
     )
 
@@ -423,15 +426,15 @@ async def view_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not prompts:
         await query.edit_message_text(
-            "⭐ *המועדפים שלי*\n\n"
+            "⭐ <b>המועדפים שלי</b>\n\n"
             "אין לך פרומפטים מועדפים עדיין.\n\n"
             "הוסף פרומפטים למועדפים דרך כפתור ⭐",
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
         return
     
-    text = f"⭐ *המועדפים שלי* ({len(prompts)})\n\n"
+    text = f"⭐ <b>המועדפים שלי</b> ({len(prompts)})\n\n"
     
     for i, prompt in enumerate(prompts[:20], 1):  # מגביל ל-20
         emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
@@ -439,11 +442,11 @@ async def view_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(title) > 40:
             title = title[:40] + "..."
         
-        text += f"{i}. {emoji} *{title}*\n"
-        text += f"   /view\\_{str(prompt['_id'])}\n\n"
+        text += f"{i}. {emoji} <b>{escape_html(title)}</b>\n"
+        text += f"   /view_{str(prompt['_id'])}\n\n"
     
     await query.edit_message_text(
         text,
-        parse_mode='MarkdownV2',
+        parse_mode='HTML',
         reply_markup=back_button("back_main")
     )
