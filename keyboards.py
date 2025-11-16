@@ -21,6 +21,9 @@ def main_menu_keyboard():
             InlineKeyboardButton("🏷️ תגיות", callback_data="tags")
         ],
         [
+            InlineKeyboardButton("🗑️ סל מחזור", callback_data="trash"),
+        ],
+        [
             InlineKeyboardButton("📊 סטטיסטיקות", callback_data="stats"),
             InlineKeyboardButton("⚙️ הגדרות", callback_data="settings")
         ]

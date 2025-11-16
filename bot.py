@@ -133,12 +133,13 @@ async def start_command(update: Update, context):
         first_name=user.first_name
     )
     
+    from utils import escape_html
     welcome_text = (
-        f"👋 שלום {user.first_name}!\n\n"
-        f"ברוך הבא ל-*PromptTracker* 🚀\n\n"
+        f"👋 שלום {escape_html(user.first_name)}!\n\n"
+        f"ברוך הבא ל-<b>PromptTracker</b> 🚀\n\n"
         f"אני אעזור לך לנהל ולארגן את כל הפרומפטים שלך "
         f"למודלים של AI (ChatGPT, Claude, Midjourney ועוד).\n\n"
-        f"📋 *מה אני יכול לעשות?*\n"
+        f"📋 <b>מה אני יכול לעשות?</b>\n"
         f"• 💾 שמור פרומפטים בקלות\n"
         f"• 🔍 חפש ומצא במהירות\n"
         f"• 📁 ארגן לפי קטגוריות\n"
@@ -150,15 +151,15 @@ async def start_command(update: Update, context):
     
     await update.message.reply_text(
         welcome_text,
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=main_menu_keyboard()
     )
 
 async def help_command(update: Update, context):
     """פקודת /help"""
     help_text = (
-        "📚 *עזרה - PromptTracker*\n\n"
-        "*פקודות זמינות:*\n\n"
+        "📚 <b>עזרה - PromptTracker</b>\n\n"
+        "<b>פקודות זמינות:</b>\n\n"
         "🔹 /start - תפריט ראשי\n"
         "🔹 /save - שמור פרומפט חדש\n"
         "🔹 /list - הצג את כל הפרומפטים\n"
@@ -169,7 +170,7 @@ async def help_command(update: Update, context):
         "🔹 /tags - תגיות\n"
         "🔹 /trash - סל מחזור\n"
         "🔹 /settings - הגדרות\n\n"
-        "*טיפים:*\n"
+        "<b>טיפים:</b>\n"
         "💡 אתה יכול להעביר (Forward) הודעות עם פרומפטים\n"
         "💡 השתמש בתגיות כדי לארגן טוב יותר\n"
         "💡 הפרומפטים הכי משומשים מופיעים בראש ברשימה\n\n"
@@ -178,7 +179,7 @@ async def help_command(update: Update, context):
     
     await update.message.reply_text(
         help_text,
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=main_menu_keyboard()
     )
 
@@ -203,7 +204,7 @@ async def show_settings(update: Update, context):
 
     await (query.edit_message_text if query else update.message.reply_text)(
         text,
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=back_button("back_main")
     )
 
@@ -214,14 +215,14 @@ async def stats_command(update: Update, context):
     
     user_stats = stats['user']
     
-    text = "📊 *הסטטיסטיקות שלך*\n\n"
-    text += f"📋 סה״כ פרומפטים: *{user_stats.get('total_prompts', 0)}*\n"
-    text += f"🔢 סה״כ שימושים: *{user_stats.get('total_uses', 0)}*\n"
-    text += f"⭐ מועדפים: *{db.count_prompts(user.id, is_favorite=True)}*\n\n"
+    text = "📊 <b>הסטטיסטיקות שלך</b>\n\n"
+    text += f"📋 סה״כ פרומפטים: <b>{user_stats.get('total_prompts', 0)}</b>\n"
+    text += f"🔢 סה״כ שימושים: <b>{user_stats.get('total_uses', 0)}</b>\n"
+    text += f"⭐ מועדפים: <b>{db.count_prompts(user.id, is_favorite=True)}</b>\n\n"
     
     # קטגוריות פופולריות
     if stats['categories']:
-        text += "📁 *קטגוריות מובילות:*\n"
+        text += "📁 <b>קטגוריות מובילות:</b>\n"
         for cat in stats['categories'][:5]:
             emoji = config.CATEGORY_EMOJIS.get(cat['_id'], '📄')
             text += f"  {emoji} {cat['_id']}: {cat['count']}\n"
@@ -229,20 +230,20 @@ async def stats_command(update: Update, context):
     
     # תגיות פופולריות
     if stats['tags']:
-        text += "🏷️ *תגיות פופולריות:*\n"
+        text += "🏷️ <b>תגיות פופולריות:</b>\n"
         for tag in stats['tags'][:5]:
             text += f"  #{tag['_id']}: {tag['count']}\n"
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
     else:
         await update.message.reply_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
 
@@ -250,18 +251,27 @@ async def trash_command(update: Update, context):
     """הצגת סל מחזור"""
     user = update.effective_user
     trash_items = db.get_trash(user.id)
+    query = update.callback_query
     
     if not trash_items:
-        text = "🗑️ *סל המחזור*\n\nהסל ריק."
-        await update.message.reply_text(
-            text,
-            parse_mode='Markdown',
-            reply_markup=back_button("back_main")
-        )
+        text = "🗑️ <b>סל המחזור</b>\n\nהסל ריק."
+        if query:
+            await query.answer()
+            await query.edit_message_text(
+                text,
+                parse_mode='HTML',
+                reply_markup=back_button("back_main")
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                parse_mode='HTML',
+                reply_markup=back_button("back_main")
+            )
         return
     
-    text = f"🗑️ *סל המחזור* ({len(trash_items)})\n\n"
-    text += "_פרומפטים נמחקים לצמיתות אחרי 30 יום_\n\n"
+    text = f"🗑️ <b>סל המחזור</b> ({len(trash_items)})\n\n"
+    text += "<i>פרומפטים נמחקים לצמיתות אחרי 30 יום</i>\n\n"
     
     for i, prompt in enumerate(trash_items[:20], 1):
         emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
@@ -272,15 +282,22 @@ async def trash_command(update: Update, context):
         deleted_at = prompt.get('deleted_at')
         if deleted_at:
             days_ago = (db.prompts.database.client.server_info()['localTime'] - deleted_at).days
-            text += f"{i}. {emoji} *{title}*\n"
+            text += f"{i}. {emoji} <b>{title}</b>\n"
             text += f"   נמחק לפני {days_ago} ימים\n"
-            text += f"   /restore\\_{str(prompt['_id'])}\n\n"
-    
-    await update.message.reply_text(
-        text,
-        parse_mode='MarkdownV2',
-        reply_markup=back_button("back_main")
-    )
+            text += f"   /restore_{str(prompt['_id'])}\n\n"
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            text,
+            parse_mode='HTML',
+            reply_markup=back_button("back_main")
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode='HTML',
+            reply_markup=back_button("back_main")
+        )
 
 async def restore_command(update: Update, context):
     """שחזור פרומפט מהאשפה"""
@@ -316,8 +333,8 @@ async def button_handler(update: Update, context):
     if data == "back_main":
         await query.answer()
         await query.edit_message_text(
-            "📋 *PromptTracker*\n\nבחר פעולה:",
-            parse_mode='Markdown',
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
             reply_markup=main_menu_keyboard()
         )
         return
@@ -459,6 +476,7 @@ def main():
     application.add_handler(CallbackQueryHandler(manage_tags, pattern="^tags_"))
     application.add_handler(CallbackQueryHandler(remove_tag, pattern="^rmtag_"))
     application.add_handler(CallbackQueryHandler(show_settings, pattern="^settings$"))
+    application.add_handler(CallbackQueryHandler(trash_command, pattern="^trash$"))
 
     # Conversation Handler להוספת תגית
     tags_conv = ConversationHandler(

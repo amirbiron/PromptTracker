@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from database import db
 from keyboards import tag_management_keyboard, back_button
 import config
+from utils import escape_html
 
 # States
 WAITING_FOR_NEW_TAG = 0
@@ -26,21 +27,21 @@ async def manage_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     existing_tags = prompt.get('tags', [])
     
-    text = f"🏷️ *ניהול תגיות*\n\n"
-    text += f"📋 פרומפט: {prompt['title']}\n\n"
+    text = f"🏷️ <b>ניהול תגיות</b>\n\n"
+    text += f"📋 פרומפט: {escape_html(prompt['title'])}\n\n"
     
     if existing_tags:
         text += f"תגיות קיימות ({len(existing_tags)}):\n"
         for tag in existing_tags:
-            text += f"• #{tag}\n"
+            text += f"• #{escape_html(tag)}\n"
     else:
-        text += "_אין עדיין תגיות_\n"
+        text += "<i>אין עדיין תגיות</i>\n"
     
-    text += f"\n💡 _תגיות עוזרות למצוא פרומפטים במהירות_"
+    text += f"\n💡 <i>תגיות עוזרות למצוא פרומפטים במהירות</i>"
     
     await query.edit_message_text(
         text,
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=tag_management_keyboard(prompt_id, existing_tags)
     )
 
@@ -53,14 +54,14 @@ async def start_add_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['adding_tag_to'] = prompt_id
     
     await query.edit_message_text(
-        "🏷️ *הוספת תגית חדשה*\n\n"
+        "🏷️ <b>הוספת תגית חדשה</b>\n\n"
         "שלח את שם התגית (ללא #)\n\n"
         "דוגמאות:\n"
-        "• `python`\n"
-        "• `telegram-bot`\n"
-        "• `beginner`\n\n"
+        "• <code>python</code>\n"
+        "• <code>telegram-bot</code>\n"
+        "• <code>beginner</code>\n\n"
         "או שלח /cancel לביטול.",
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     
     return WAITING_FOR_NEW_TAG
@@ -100,8 +101,8 @@ async def receive_new_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if tag in existing_tags:
         await update.message.reply_text(
-            f"⚠️ התגית `#{tag}` כבר קיימת!",
-            parse_mode='Markdown'
+            f"⚠️ התגית <code>#{escape_html(tag)}</code> כבר קיימת!",
+            parse_mode='HTML'
         )
         return WAITING_FOR_NEW_TAG
     
@@ -117,8 +118,8 @@ async def receive_new_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.update_prompt(prompt_id, user.id, {'tags': existing_tags})
     
     await update.message.reply_text(
-        f"✅ התגית `#{tag}` נוספה!",
-        parse_mode='Markdown',
+        f"✅ התגית <code>#{escape_html(tag)}</code> נוספה!",
+        parse_mode='HTML',
         reply_markup=back_button(f"tags_{prompt_id}")
     )
     

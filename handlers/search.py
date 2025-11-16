@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from database import db
 from keyboards import category_keyboard, back_button, prompt_list_item_keyboard
 import config
+from utils import escape_html
 
 # States
 WAITING_FOR_SEARCH_QUERY = 0
@@ -14,22 +15,22 @@ async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """התחלת חיפוש"""
     query = update.callback_query
     text = (
-        "🔍 *חיפוש פרומפטים*\n\n"
+        "🔍 <b>חיפוש פרומפטים</b>\n\n"
         "שלח מילת חיפוש או ביטוי לחיפוש בכל הפרומפטים שלך.\n\n"
-        "💡 _טיפ: החיפוש מתבצע בכותרת ובתוכן הפרומפט_\n\n"
+        "💡 <i>טיפ: החיפוש מתבצע בכותרת ובתוכן הפרומפט</i>\n\n"
         "או שלח /cancel לביטול."
     )
     if query:
         await query.answer()
         await query.edit_message_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
     else:
         await update.message.reply_text(
             text,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
     
@@ -52,15 +53,15 @@ async def receive_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if not results:
         await update.message.reply_text(
-            f"🔍 לא נמצאו תוצאות עבור: *{query_text}*\n\n"
+            f"🔍 לא נמצאו תוצאות עבור: <b>{escape_html(query_text)}</b>\n\n"
             f"נסה מילות חיפוש אחרות.",
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
         return ConversationHandler.END
     
     # הצגת תוצאות
-    text = f"🔍 *תוצאות חיפוש:* \"{query_text}\"\n"
+    text = f"🔍 <b>תוצאות חיפוש:</b> \"{escape_html(query_text)}\"\n"
     text += f"נמצאו {len(results)} תוצאות\n\n"
     
     for i, prompt in enumerate(results, 1):
@@ -71,13 +72,13 @@ async def receive_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
         if len(title) > 40:
             title = title[:40] + "..."
         
-        text += f"{i}. {fav}{emoji} *{title}*\n"
-        text += f"   📁 {prompt['category']}\n"
-        text += f"   /view\\_{str(prompt['_id'])}\n\n"
+        text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
+        text += f"   📁 {escape_html(prompt['category'])}\n"
+        text += f"   /view_{str(prompt['_id'])}\n\n"
     
     await update.message.reply_text(
         text,
-        parse_mode='MarkdownV2',
+        parse_mode='HTML',
         reply_markup=back_button("back_main")
     )
     
@@ -102,16 +103,16 @@ async def filter_by_category(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not prompts:
         emoji = config.CATEGORY_EMOJIS.get(category, '📄')
         await query.edit_message_text(
-            f"📁 *{emoji} {category}*\n\n"
+            f"📁 <b>{emoji} {escape_html(category)}</b>\n\n"
             f"אין פרומפטים בקטגוריה זו.",
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("categories")
         )
         return
     
     # הצגת תוצאות
     emoji = config.CATEGORY_EMOJIS.get(category, '📄')
-    text = f"📁 *{emoji} {category}*\n"
+    text = f"📁 <b>{emoji} {escape_html(category)}</b>\n"
     text += f"נמצאו {len(prompts)} פרומפטים\n\n"
     
     for i, prompt in enumerate(prompts[:20], 1):
@@ -121,13 +122,13 @@ async def filter_by_category(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if len(title) > 40:
             title = title[:40] + "..."
         
-        text += f"{i}. {fav}*{title}*\n"
+        text += f"{i}. {fav}<b>{escape_html(title)}</b>\n"
         text += f"   🔢 {prompt['use_count']} שימושים\n"
-        text += f"   /view\\_{str(prompt['_id'])}\n\n"
+        text += f"   /view_{str(prompt['_id'])}\n\n"
     
     await query.edit_message_text(
         text,
-        parse_mode='MarkdownV2',
+        parse_mode='HTML',
         reply_markup=back_button("categories")
     )
 
@@ -139,17 +140,17 @@ async def show_categories_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     user = update.effective_user
     
     # ספירת פרומפטים לכל קטגוריה
-    text = "📁 *קטגוריות*\n\n"
+    text = "📁 <b>קטגוריות</b>\n\n"
     text += "בחר קטגוריה לצפייה:\n\n"
     
     for emoji, category in config.CATEGORIES.items():
         count = db.count_prompts(user.id, category=category)
         if count > 0:
-            text += f"{emoji} *{category}*: {count} פרומפטים\n"
+            text += f"{emoji} <b>{escape_html(category)}</b>: {count} פרומפטים\n"
     
     await query.edit_message_text(
         text,
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=category_keyboard(include_all=True)
     )
 
@@ -163,27 +164,27 @@ async def show_tags_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not tags:
         await query.edit_message_text(
-            "🏷️ *תגיות*\n\n"
+            "🏷️ <b>תגיות</b>\n\n"
             "אין עדיין תגיות.\n\n"
             "הוסף תגיות לפרומפטים שלך כדי לארגן אותם טוב יותר!",
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
         return
     
-    text = "🏷️ *התגיות שלי*\n\n"
+    text = "🏷️ <b>התגיות שלי</b>\n\n"
     text += "התגיות הפופולריות ביותר:\n\n"
     
     for i, tag in enumerate(tags[:20], 1):
         # ספירת שימושים
         count = len(db.search_prompts(user.id, tags=[tag], limit=100))
-        text += f"{i}. #{tag} ({count})\n"
+        text += f"{i}. #{escape_html(tag)} ({count})\n"
     
-    text += f"\n_סה״כ {len(tags)} תגיות_"
+    text += f"\n<i>סה״כ {len(tags)} תגיות</i>"
     
     await query.edit_message_text(
         text,
-        parse_mode='Markdown',
+        parse_mode='HTML',
         reply_markup=back_button("back_main")
     )
 
@@ -193,11 +194,11 @@ async def show_popular_prompts(update: Update, context: ContextTypes.DEFAULT_TYP
     prompts = db.get_popular_prompts(user.id, limit=10)
     
     if not prompts:
-        text = "🔥 *פרומפטים פופולריים*\n\n"
+        text = "🔥 <b>פרומפטים פופולריים</b>\n\n"
         text += "אין עדיין נתונים על שימוש.\n\n"
         text += "השתמש בפרומפטים שלך (העתק) כדי לאסוף נתונים."
     else:
-        text = "🔥 *הפרומפטים הפופולריים ביותר*\n\n"
+        text = "🔥 <b>הפרומפטים הפופולריים ביותר</b>\n\n"
         
         for i, prompt in enumerate(prompts, 1):
             emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
@@ -207,19 +208,19 @@ async def show_popular_prompts(update: Update, context: ContextTypes.DEFAULT_TYP
             if len(title) > 40:
                 title = title[:40] + "..."
             
-            text += f"{i}. {fav}{emoji} *{title}*\n"
+            text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
             text += f"   🔢 {prompt['use_count']} שימושים\n"
-            text += f"   /view\\_{str(prompt['_id'])}\n\n"
+            text += f"   /view_{str(prompt['_id'])}\n\n"
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
             text,
-            parse_mode='MarkdownV2',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
     else:
         await update.message.reply_text(
             text,
-            parse_mode='MarkdownV2',
+            parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
