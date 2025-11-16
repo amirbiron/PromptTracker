@@ -1,0 +1,382 @@
+"""
+מטפלי ניהול פרומפטים - צפייה, עריכה, מחיקה
+"""
+from telegram import Update
+from telegram.ext import ContextTypes, ConversationHandler
+from database import db
+from keyboards import (
+    prompt_actions_keyboard, 
+    pagination_keyboard,
+    edit_menu_keyboard,
+    confirm_keyboard,
+    back_button,
+    prompt_list_item_keyboard
+)
+import config
+from bson import ObjectId
+
+# States
+EDITING_CONTENT, EDITING_TITLE = range(2)
+
+async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """הצגת רשימת הפרומפטים"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    user = update.effective_user
+    
+    # קבלת מספר העמוד
+    page = 0
+    if query and query.data.startswith('page_'):
+        page = int(query.data.split('_')[1])
+    
+    # קבלת פרומפטים
+    skip = page * config.PROMPTS_PER_PAGE
+    prompts = db.get_all_prompts(user.id, skip=skip, limit=config.PROMPTS_PER_PAGE)
+    total_count = db.count_prompts(user.id)
+    
+    if not prompts:
+        text = "📋 *הפרומפטים שלי*\n\n"
+        text += "אין לך פרומפטים שמורים עדיין.\n\n"
+        text += "השתמש ב-/save כדי לשמור את הפרומפט הראשון שלך! 💾"
+        
+        if query:
+            await query.edit_message_text(
+                text,
+                parse_mode='Markdown',
+                reply_markup=back_button("back_main")
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                parse_mode='Markdown'
+            )
+        return
+    
+    # בניית הטקסט
+    text = f"📋 *הפרומפטים שלי* ({total_count} סה״כ)\n\n"
+    
+    for i, prompt in enumerate(prompts, start=skip + 1):
+        emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+        fav = "⭐ " if prompt.get('is_favorite') else ""
+        
+        title = prompt['title']
+        if len(title) > 40:
+            title = title[:40] + "..."
+        
+        text += f"{i}. {fav}{emoji} *{title}*\n"
+        text += f"   📁 {prompt['category']} | "
+        text += f"🔢 {prompt['use_count']} שימושים\n"
+        
+        # תגיות
+        if prompt.get('tags'):
+            tags_str = " ".join([f"#{tag}" for tag in prompt['tags'][:3]])
+            text += f"   🏷️ {tags_str}\n"
+        
+        text += f"   /view\\_{str(prompt['_id'])}\n\n"
+    
+    # דפדוף
+    total_pages = (total_count + config.PROMPTS_PER_PAGE - 1) // config.PROMPTS_PER_PAGE
+    
+    if query:
+        await query.edit_message_text(
+            text,
+            parse_mode='MarkdownV2',
+            reply_markup=pagination_keyboard(page, total_pages, "page")
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode='MarkdownV2',
+            reply_markup=pagination_keyboard(page, total_pages, "page")
+        )
+
+async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """הצגת פרומפט מלא"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        prompt_id = query.data.replace('view_', '')
+    else:
+        # מפקודה /view_id
+        prompt_id = context.args[0] if context.args else None
+    
+    if not prompt_id:
+        return
+    
+    user = update.effective_user
+    prompt = db.get_prompt(prompt_id, user.id)
+    
+    if not prompt:
+        text = "⚠️ הפרומפט לא נמצא או שנמחק."
+        if query:
+            await query.edit_message_text(text)
+        else:
+            await update.message.reply_text(text)
+        return
+    
+    # בניית ההודעה
+    emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+    fav = "⭐ " if prompt.get('is_favorite') else ""
+    
+    text = f"{fav}*{prompt['title']}*\n"
+    text += f"{'━' * 30}\n\n"
+    text += f"{prompt['content']}\n\n"
+    text += f"{'━' * 30}\n"
+    text += f"📊 *פרטים:*\n"
+    text += f"• מזהה: `{prompt_id}`\n"
+    text += f"• קטגוריה: {emoji} {prompt['category']}\n"
+    text += f"• אורך: {prompt['length']} תווים\n"
+    text += f"• שימושים: {prompt['use_count']} פעמים\n"
+    text += f"• נוצר: {prompt['created_at'].strftime('%d/%m/%Y')}\n"
+    
+    if prompt.get('tags'):
+        tags_str = " ".join([f"#{tag}" for tag in prompt['tags']])
+        text += f"• תגיות: {tags_str}\n"
+    
+    keyboard = prompt_actions_keyboard(prompt_id, prompt.get('is_favorite', False))
+    
+    if query:
+        await query.edit_message_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=keyboard
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode='Markdown',
+            reply_markup=keyboard
+        )
+
+async def copy_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """העתקת פרומפט"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    prompt_id = query.data.replace('copy_', '')
+    
+    prompt = db.get_prompt(prompt_id, user.id)
+    
+    if not prompt:
+        await query.answer("⚠️ הפרומפט לא נמצא", show_alert=True)
+        return
+    
+    # עדכון מונה שימושים
+    db.increment_use_count(prompt_id, user.id)
+    
+    # שליחת הפרומפט כהודעה שניתן להעתיק
+    await context.bot.send_message(
+        chat_id=user.id,
+        text=f"📋 *{prompt['title']}*\n\n"
+             f"```\n{prompt['content']}\n```\n\n"
+             f"_לחץ על הטקסט כדי להעתיק_",
+        parse_mode='Markdown'
+    )
+    
+    await query.answer("✅ הפרומפט נשלח! העתק את הטקסט מההודעה", show_alert=False)
+
+async def toggle_favorite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """הוספה/הסרה ממועדפים"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    prompt_id = query.data.replace('fav_', '')
+    
+    prompt = db.get_prompt(prompt_id, user.id)
+    
+    if not prompt:
+        await query.answer("⚠️ הפרומפט לא נמצא", show_alert=True)
+        return
+    
+    new_fav_status = not prompt.get('is_favorite', False)
+    db.update_prompt(prompt_id, user.id, {'is_favorite': new_fav_status})
+    
+    if new_fav_status:
+        await query.answer("⭐ נוסף למועדפים!")
+    else:
+        await query.answer("💔 הוסר ממועדפים")
+    
+    # רענון התצוגה
+    await view_prompt_details(update, context)
+
+async def start_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """התחלת עריכת פרומפט"""
+    query = update.callback_query
+    await query.answer()
+    
+    prompt_id = query.data.replace('edit_', '')
+    
+    await query.edit_message_text(
+        "✏️ *עריכת פרומפט*\n\n"
+        "מה תרצה לערוך?",
+        parse_mode='Markdown',
+        reply_markup=edit_menu_keyboard(prompt_id)
+    )
+
+async def start_edit_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """עריכת תוכן"""
+    query = update.callback_query
+    await query.answer()
+    
+    prompt_id = query.data.replace('edit_content_', '')
+    context.user_data['editing_prompt_id'] = prompt_id
+    
+    await query.edit_message_text(
+        "📝 *עריכת תוכן*\n\n"
+        "שלח את התוכן החדש לפרומפט.\n\n"
+        "או שלח /cancel לביטול.",
+        parse_mode='Markdown'
+    )
+    
+    return EDITING_CONTENT
+
+async def receive_new_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """קבלת תוכן חדש"""
+    user = update.effective_user
+    new_content = update.message.text
+    prompt_id = context.user_data.get('editing_prompt_id')
+    
+    if not prompt_id:
+        await update.message.reply_text("⚠️ שגיאה: לא נמצא פרומפט לעריכה")
+        return ConversationHandler.END
+    
+    success = db.update_prompt(prompt_id, user.id, {
+        'content': new_content,
+        'length': len(new_content)
+    })
+    
+    if success:
+        await update.message.reply_text(
+            "✅ התוכן עודכן בהצלחה!",
+            reply_markup=back_button(f"view_{prompt_id}")
+        )
+    else:
+        await update.message.reply_text("⚠️ שגיאה בעדכון התוכן")
+    
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def start_edit_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """עריכת כותרת"""
+    query = update.callback_query
+    await query.answer()
+    
+    prompt_id = query.data.replace('edit_title_', '')
+    context.user_data['editing_prompt_id'] = prompt_id
+    
+    await query.edit_message_text(
+        "📋 *עריכת כותרת*\n\n"
+        "שלח את הכותרת החדשה.\n\n"
+        "או שלח /cancel לביטול.",
+        parse_mode='Markdown'
+    )
+    
+    return EDITING_TITLE
+
+async def receive_new_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """קבלת כותרת חדשה"""
+    user = update.effective_user
+    new_title = update.message.text
+    prompt_id = context.user_data.get('editing_prompt_id')
+    
+    if not prompt_id:
+        await update.message.reply_text("⚠️ שגיאה: לא נמצא פרומפט לעריכה")
+        return ConversationHandler.END
+    
+    success = db.update_prompt(prompt_id, user.id, {'title': new_title})
+    
+    if success:
+        await update.message.reply_text(
+            "✅ הכותרת עודכנה בהצלחה!",
+            reply_markup=back_button(f"view_{prompt_id}")
+        )
+    else:
+        await update.message.reply_text("⚠️ שגיאה בעדכון הכותרת")
+    
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def delete_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """מחיקת פרומפט"""
+    query = update.callback_query
+    await query.answer()
+    
+    prompt_id = query.data.replace('delete_', '')
+    
+    await query.edit_message_text(
+        "⚠️ *מחיקת פרומפט*\n\n"
+        "האם אתה בטוח שברצונך למחוק את הפרומפט?\n"
+        "ניתן יהיה לשחזר אותו מסל המחזור תוך 30 יום.",
+        parse_mode='Markdown',
+        reply_markup=confirm_keyboard('delete', prompt_id)
+    )
+
+async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """אישור מחיקה"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    _, action, prompt_id = query.data.split('_', 2)
+    
+    if action == 'delete':
+        success = db.delete_prompt(prompt_id, user.id, permanent=False)
+        
+        if success:
+            await query.edit_message_text(
+                "✅ הפרומפט הועבר לסל המחזור.\n\n"
+                "ניתן לשחזר אותו דרך /trash",
+                reply_markup=back_button("my_prompts")
+            )
+        else:
+            await query.edit_message_text("⚠️ שגיאה במחיקת הפרומפט")
+
+async def cancel_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ביטול מחיקה"""
+    query = update.callback_query
+    await query.answer()
+    
+    _, action, prompt_id = query.data.split('_', 2)
+    
+    # חזרה לצפייה בפרומפט
+    context.user_data['callback_data'] = f"view_{prompt_id}"
+    await view_prompt_details(update, context)
+
+async def view_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """הצגת מועדפים"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    prompts = db.get_favorites(user.id)
+    
+    if not prompts:
+        await query.edit_message_text(
+            "⭐ *המועדפים שלי*\n\n"
+            "אין לך פרומפטים מועדפים עדיין.\n\n"
+            "הוסף פרומפטים למועדפים דרך כפתור ⭐",
+            parse_mode='Markdown',
+            reply_markup=back_button("back_main")
+        )
+        return
+    
+    text = f"⭐ *המועדפים שלי* ({len(prompts)})\n\n"
+    
+    for i, prompt in enumerate(prompts[:20], 1):  # מגביל ל-20
+        emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+        title = prompt['title']
+        if len(title) > 40:
+            title = title[:40] + "..."
+        
+        text += f"{i}. {emoji} *{title}*\n"
+        text += f"   /view\\_{str(prompt['_id'])}\n\n"
+    
+    await query.edit_message_text(
+        text,
+        parse_mode='MarkdownV2',
+        reply_markup=back_button("back_main")
+    )
