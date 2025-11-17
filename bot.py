@@ -353,6 +353,28 @@ async def button_handler(update: Update, context):
     
     # הפניה לפונקציות אחרות תתבצע דרך ה-handlers
 
+async def back_to_main_from_conv(update: Update, context):
+    """יציאה מכל שיחה והחזרה לתפריט הראשי."""
+    from telegram.ext import ConversationHandler
+    query = update.callback_query
+    if query:
+        try:
+            await query.answer()
+        except Exception:
+            pass
+        await query.edit_message_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    elif update.effective_message:
+        await update.effective_message.reply_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    return ConversationHandler.END
+
 async def error_handler(update: Update, context):
     """טיפול בשגיאות"""
     logger.error(f"Update {update} caused error {context.error}")
@@ -407,7 +429,7 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel_save),
-            CallbackQueryHandler(cancel_save, pattern="^back_main$")
+            CallbackQueryHandler(back_to_main_from_conv, pattern="^back_main$")
         ]
     )
     application.add_handler(save_conv)
@@ -422,7 +444,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_content)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_save)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_save),
+            CallbackQueryHandler(back_to_main_from_conv, pattern="^back_main$")
+        ]
     )
     application.add_handler(edit_content_conv)
     
@@ -436,7 +461,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_title)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_save)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_save),
+            CallbackQueryHandler(back_to_main_from_conv, pattern="^back_main$")
+        ]
     )
     application.add_handler(edit_title_conv)
 
@@ -450,7 +478,10 @@ def main():
                 CallbackQueryHandler(apply_new_category, pattern="^cat_")
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_change_category)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_change_category),
+            CallbackQueryHandler(back_to_main_from_conv, pattern="^back_main$")
+        ]
     )
     application.add_handler(change_cat_conv)
     
@@ -484,7 +515,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_tag)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_add_tag)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_add_tag),
+            CallbackQueryHandler(back_to_main_from_conv, pattern="^back_main$")
+        ]
     )
     application.add_handler(tags_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
