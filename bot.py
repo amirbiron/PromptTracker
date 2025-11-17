@@ -450,7 +450,6 @@ def main():
     application.add_handler(change_cat_conv)
     
     # Callback handlers
-    application.add_handler(CallbackQueryHandler(exit_search_mode_on_callback, block=False))
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^my_prompts$"))
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^page_"))
     application.add_handler(CallbackQueryHandler(view_prompt_details, pattern="^view_"))
@@ -485,6 +484,8 @@ def main():
     application.add_handler(tags_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
+    # ניקוי מצב החיפוש לאחר שטופלו שאר ה-handlers הספציפיים
+    application.add_handler(CallbackQueryHandler(exit_search_mode_on_callback, block=False))
     
     # Callback כללי
     application.add_handler(CallbackQueryHandler(button_handler))
