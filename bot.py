@@ -2,7 +2,6 @@
 PromptTracker Bot - בוט לניהול פרומפטים
 """
 import logging
-from datetime import datetime
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update
@@ -284,11 +283,7 @@ async def trash_command(update: Update, context):
         
         deleted_at = prompt.get('deleted_at')
         if deleted_at:
-            # Avoid reliance on Mongo server_info['localTime'] which may be missing
-            try:
-                days_ago = (datetime.utcnow() - deleted_at).days
-            except Exception:
-                days_ago = 0
+            days_ago = (db.prompts.database.client.server_info()['localTime'] - deleted_at).days
             text += f"{i}. {emoji} <b>{title}</b>\n"
             text += f"   נמחק לפני {days_ago} ימים\n"
             text += f"   /restore_{str(prompt['_id'])}\n\n"
@@ -353,6 +348,25 @@ async def button_handler(update: Update, context):
     
     # הפניה לפונקציות אחרות תתבצע דרך ה-handlers
 
+
+async def back_to_main(update: Update, context):
+    """סיום כל שיחה פעילה וחזרה לתפריט הראשי."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    return ConversationHandler.END
+
 async def error_handler(update: Update, context):
     """טיפול בשגיאות"""
     logger.error(f"Update {update} caused error {context.error}")
@@ -407,7 +421,8 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel_save),
-            CallbackQueryHandler(cancel_save, pattern="^back_main$")
+            CallbackQueryHandler(cancel_save, pattern="^back_main$"),
+            CallbackQueryHandler(back_to_main, pattern="^back_main$")
         ]
     )
     application.add_handler(save_conv)
@@ -422,9 +437,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_content)
             ]
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel_save)
-        ]
+        fallbacks=[CommandHandler("cancel", cancel_save)]
     )
     application.add_handler(edit_content_conv)
     
@@ -438,9 +451,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_title)
             ]
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel_save)
-        ]
+        fallbacks=[CommandHandler("cancel", cancel_save)]
     )
     application.add_handler(edit_title_conv)
 
@@ -454,9 +465,7 @@ def main():
                 CallbackQueryHandler(apply_new_category, pattern="^cat_")
             ]
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel_change_category)
-        ]
+        fallbacks=[CommandHandler("cancel", cancel_change_category)]
     )
     application.add_handler(change_cat_conv)
     
@@ -490,9 +499,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_tag)
             ]
         },
-        fallbacks=[
-            CommandHandler("cancel", cancel_add_tag)
-        ]
+        fallbacks=[CommandHandler("cancel", cancel_add_tag)]
     )
     application.add_handler(tags_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
