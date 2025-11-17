@@ -4,6 +4,7 @@ PromptTracker Bot - בוט לניהול פרומפטים
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime, timezone
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -213,6 +214,9 @@ async def show_settings(update: Update, context):
 async def stats_command(update: Update, context):
     """הצגת סטטיסטיקות"""
     user = update.effective_user
+    # מענה מיידי ללחיצה על כפתור כדי למנוע חסימת לחיצות המשך בטלגרם
+    if update.callback_query:
+        await update.callback_query.answer()
     stats = db.get_user_statistics(user.id)
     
     user_stats = stats['user']
@@ -254,6 +258,9 @@ async def trash_command(update: Update, context):
     user = update.effective_user
     trash_items = db.get_trash(user.id)
     query = update.callback_query
+    # מענה מיידי ללחיצה על כפתור כדי למנוע חסימת לחיצות המשך
+    if query:
+        await query.answer()
     
     if not trash_items:
         text = "🗑️ <b>סל המחזור</b>\n\nהסל ריק."
@@ -282,13 +289,23 @@ async def trash_command(update: Update, context):
             title = title[:40] + "..."
         
         deleted_at = prompt.get('deleted_at')
-        if deleted_at:
-            days_ago = (db.prompts.database.client.server_info()['localTime'] - deleted_at).days
-            text += f"{i}. {emoji} <b>{title}</b>\n"
+        days_ago = None
+        if isinstance(deleted_at, datetime):
+            # הבטחת זמן מודע לאזור זמן (UTC) לצורך חיסור בטוח
+            if deleted_at.tzinfo is None or deleted_at.tzinfo.utcoffset(deleted_at) is None:
+                deleted_at = deleted_at.replace(tzinfo=timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            try:
+                days_ago = (now_utc - deleted_at).days
+            except Exception:
+                days_ago = None
+        text += f"{i}. {emoji} <b>{title}</b>\n"
+        if days_ago is not None:
             text += f"   נמחק לפני {days_ago} ימים\n"
-            text += f"   /restore_{str(prompt['_id'])}\n\n"
+        else:
+            text += f"   נמחק לאחרונה\n"
+        text += f"   /restore_{str(prompt['_id'])}\n\n"
     if query:
-        await query.answer()
         await query.edit_message_text(
             text,
             parse_mode='HTML',
@@ -347,6 +364,12 @@ async def button_handler(update: Update, context):
         return
     
     # הפניה לפונקציות אחרות תתבצע דרך ה-handlers
+    # אם בכל זאת הגיע callback שלא נתפס ע"י handlers הספציפיים, נענה כדי לא לחסום לחיצות.
+    try:
+        await query.answer()
+    except Exception:
+        # התעלמות בטוחה – העיקר שלא ייחסם צד הלקוח
+        pass
 
 
 async def back_to_main(update: Update, context):
