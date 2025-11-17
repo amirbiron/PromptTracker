@@ -5,6 +5,8 @@ from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+import hashlib
+import re
 import config
 
 class Database:
@@ -21,6 +23,11 @@ class Database:
         
         # יצירת אינדקסים
         self._create_indexes()
+        # מילוי קודים קצרים למסמכים קיימים (קריאה קלה, בטוחה)
+        try:
+            self.backfill_short_codes()
+        except Exception:
+            pass
     
     def _create_indexes(self):
         """יצירת אינדקסים לחיפוש מהיר"""
@@ -31,6 +38,13 @@ class Database:
         self.prompts.create_index([("created_at", DESCENDING)])
         self.prompts.create_index([("title", TEXT), ("content", TEXT)])
         self.prompts.create_index([("is_deleted", ASCENDING)])
+        # קוד קצר ייחודי לכל משתמש (sparse כדי לא לשבור מסמכים ללא שדה)
+        self.prompts.create_index(
+            [("user_id", ASCENDING), ("short_code", ASCENDING)],
+            unique=True,
+            sparse=True,
+            name="uniq_short_code_per_user"
+        )
         
         # אינדקס ייחודי למשתמשים
         self.users.create_index([("user_id", ASCENDING)], unique=True)
@@ -94,22 +108,84 @@ class Database:
         result = self.prompts.insert_one(prompt)
         prompt['_id'] = result.inserted_id
         
+        # קוד קצר דטרמיניסטי על בסיס ה-ID, עם טיפול בהתנגשויות
+        try:
+            short_code = self._ensure_short_code_for(str(prompt['_id']), user_id)
+            if short_code:
+                prompt['short_code'] = short_code
+        except Exception:
+            # לא נכשיל שמירה בגלל קוד קצר
+            pass
+        
         # עדכון סטטיסטיקות
         self.update_user_stats(user_id, "total_prompts")
         
         return prompt
     
     def get_prompt(self, prompt_id: str, user_id: int) -> Optional[Dict]:
-        """קבלת פרומפט לפי ID"""
+        """קבלת פרומפט לפי מזהה או קוד קצר (דטרמיניסטי)."""
         from bson import ObjectId
-        try:
+        # ניסיון לפי ObjectId
+        if isinstance(prompt_id, str) and re.fullmatch(r"[0-9a-fA-F]{24}", prompt_id or ""):
+            try:
+                return self.prompts.find_one({
+                    "_id": ObjectId(prompt_id),
+                    "user_id": user_id,
+                    "is_deleted": False
+                })
+            except Exception:
+                pass
+        # ניסיון לפי short_code (4-8 תווים הקסה, לא תלוי רישיות)
+        code = (prompt_id or "").strip().upper()
+        if re.fullmatch(r"[0-9A-F]{4,8}", code):
             return self.prompts.find_one({
-                "_id": ObjectId(prompt_id),
+                "short_code": code,
                 "user_id": user_id,
                 "is_deleted": False
             })
-        except:
-            return None
+        return None
+
+    # ====== קוד קצר ======
+    def _generate_short_code(self, prompt_id: str, length: int = 4) -> str:
+        digest = hashlib.md5(str(prompt_id).encode()).hexdigest().upper()
+        return digest[:max(4, min(length, 12))]
+
+    def _ensure_short_code_for(self, prompt_id: str, user_id: int) -> Optional[str]:
+        """מקצה שדה short_code למסמך לפי prompt_id, עם טיפול בהתנגשויות.
+        מחזיר את הקוד שהוקצה או None אם נכשל בלי להחריג.
+        """
+        # ננסה להאריך עד 8 תווים במקרה התנגשות (נדיר מאוד)
+        for length in range(4, 9):
+            code = self._generate_short_code(prompt_id, length)
+            try:
+                # בדיקת קיום
+                existing = self.prompts.find_one({"user_id": user_id, "short_code": code})
+                if existing and str(existing.get("_id")) != str(prompt_id):
+                    continue  # התנגשות, ננסה אורך ארוך יותר
+                # עדכון השדה במסמך הנוכחי
+                from bson import ObjectId
+                self.prompts.update_one(
+                    {"_id": ObjectId(prompt_id), "user_id": user_id},
+                    {"$set": {"short_code": code}}
+                )
+                return code
+            except DuplicateKeyError:
+                continue
+            except Exception:
+                # לא נעצור את הזרימה
+                break
+        return None
+
+    def backfill_short_codes(self):
+        """מילוי לאחור של short_code למסמכים חסרי שדה זה."""
+        cursor = self.prompts.find({"short_code": {"$exists": False}})
+        for doc in cursor:
+            user_id = doc.get("user_id")
+            _id = str(doc.get("_id"))
+            try:
+                self._ensure_short_code_for(_id, user_id)
+            except Exception:
+                continue
     
     def update_prompt(self, prompt_id: str, user_id: int, 
                      update_data: Dict) -> bool:

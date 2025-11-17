@@ -76,7 +76,7 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tags_str = " ".join([f"#{escape_html(tag)}" for tag in prompt['tags'][:3]])
             text += f"   🏷️ {tags_str}\n"
         
-        text += f"   /view_{str(prompt['_id'])}\n\n"
+        text += f"   /view_{escape_html(prompt.get('short_code', str(prompt['_id'])))}\n\n"
     
     # דפדוף
     total_pages = (total_count + config.PROMPTS_PER_PAGE - 1) // config.PROMPTS_PER_PAGE
@@ -140,7 +140,7 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
     text += f"{escape_html(prompt['content'])}\n\n"
     text += f"{'━' * 30}\n"
     text += f"📊 <b>פרטים:</b>\n"
-    text += f"• מזהה: {code_inline(prompt_id)}\n"
+    text += f"• קוד: {code_inline(prompt.get('short_code', prompt_id))}\n"
     text += f"• קטגוריה: {emoji} {escape_html(prompt['category'])}\n"
     text += f"• אורך: {prompt['length']} תווים\n"
     text += f"• שימושים: {prompt['use_count']} פעמים\n"
@@ -150,7 +150,7 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
         tags_str = " ".join([f"#{escape_html(tag)}" for tag in prompt['tags']])
         text += f"• תגיות: {tags_str}\n"
     
-    keyboard = prompt_actions_keyboard(prompt_id, prompt.get('is_favorite', False))
+    keyboard = prompt_actions_keyboard(str(prompt['_id']), prompt.get('is_favorite', False))
     
     if query:
         await query.edit_message_text(
@@ -464,7 +464,7 @@ async def view_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = title[:40] + "..."
         
         text += f"{i}. {emoji} <b>{escape_html(title)}</b>\n"
-        text += f"   /view_{str(prompt['_id'])}\n\n"
+        text += f"   /view_{escape_html(prompt.get('short_code', str(prompt['_id'])))}\n\n"
     
     await query.edit_message_text(
         text,
