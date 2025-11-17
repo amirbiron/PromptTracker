@@ -410,17 +410,32 @@ def main():
         logger.error("BOT_TOKEN is not set!")
         return
 
+    # ודא חיבור MongoDB מוגדר לפני התחלת polling
+    if not config.MONGO_URI:
+        logger.error("MONGO_URI is not set! Aborting before starting the bot.")
+        return
+
     # Start health server early so platform health checks pass even while waiting for lock
     start_healthcheck_server()
 
     # Acquire distributed lock to ensure a single polling instance
     try:
+        # לוג מקדים מסייע (ללא חשיפת סודות)
+        logger.warning(
+            "Starting distributed lock acquisition (service_id=%s, db=%s, mongo_uri_present=%s, wait_for_acquire=%s)",
+            config.SERVICE_ID,
+            config.MONGO_DB_NAME,
+            bool(config.MONGO_URI),
+            config.LOCK_WAIT_FOR_ACQUIRE,
+        )
         lock = MongoDistributedLock(
             mongo_uri=config.MONGO_URI,
             db_name=config.MONGO_DB_NAME,
             collection_name="bot_locks",
         )
+        logger.info("Attempting to acquire lock '%s'...", config.SERVICE_ID)
         lock.acquire_blocking()
+        logger.warning("Distributed lock acquired. Starting heartbeat and polling.")
         lock.start_heartbeat()
     except Exception as exc:
         logger.error("Failed to acquire distributed lock: %s", exc)

@@ -45,6 +45,7 @@ class MongoDistributedLock:
         collection_name: str = "bot_locks",
         lock_cfg: Optional[LockConfig] = None,
     ) -> None:
+        # Initialize Mongo client early; validate that URI is usable
         self.client = MongoClient(mongo_uri)
         self.db = self.client[db_name]
         self.collection: Collection = self.db[collection_name]
@@ -76,6 +77,26 @@ class MongoDistributedLock:
         self._hb_thread: Optional[threading.Thread] = None
         self._is_owner = False
 
+        # One-time configuration log to aid diagnostics (safe, no secrets)
+        logger.info(
+            "Distributed lock config: service_id=%s instance_id=%s host=%s lease=%ss heartbeat=%ss wait_for_acquire=%s backoff=%s-%ss",
+            self.cfg.service_id,
+            self.cfg.instance_id,
+            self.cfg.host,
+            self.cfg.lease_seconds,
+            self.cfg.heartbeat_interval,
+            self.cfg.wait_for_acquire,
+            self.cfg.backoff_min_seconds,
+            self.cfg.backoff_max_seconds,
+        )
+
+        # Proactive connectivity check so failures are visible and we don't start polling
+        try:
+            self.client.admin.command("ping")
+        except PyMongoError as exc:
+            logger.error("Failed to connect to MongoDB (ping): %s", exc)
+            raise
+
         self._ensure_indexes()
 
         # Ensure clean release on shutdown
@@ -94,7 +115,9 @@ class MongoDistributedLock:
                 [("expiresAt", ASCENDING)], name="ttl_expiresAt", expireAfterSeconds=0
             )
         except PyMongoError as exc:
-            logger.warning("Failed to ensure TTL index on bot_locks: %s", exc)
+            # Escalate so the bot does not continue without a working DB
+            logger.error("Failed to ensure TTL index on bot_locks: %s", exc)
+            raise
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
