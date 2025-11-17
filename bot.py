@@ -2,6 +2,7 @@
 PromptTracker Bot - בוט לניהול פרומפטים
 """
 import logging
+from datetime import datetime
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update
@@ -283,7 +284,11 @@ async def trash_command(update: Update, context):
         
         deleted_at = prompt.get('deleted_at')
         if deleted_at:
-            days_ago = (db.prompts.database.client.server_info()['localTime'] - deleted_at).days
+            # Avoid reliance on Mongo server_info['localTime'] which may be missing
+            try:
+                days_ago = (datetime.utcnow() - deleted_at).days
+            except Exception:
+                days_ago = 0
             text += f"{i}. {emoji} <b>{title}</b>\n"
             text += f"   נמחק לפני {days_ago} ימים\n"
             text += f"   /restore_{str(prompt['_id'])}\n\n"
@@ -417,7 +422,9 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_content)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_save)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_save)
+        ]
     )
     application.add_handler(edit_content_conv)
     
@@ -431,7 +438,9 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_title)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_save)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_save)
+        ]
     )
     application.add_handler(edit_title_conv)
 
@@ -445,7 +454,9 @@ def main():
                 CallbackQueryHandler(apply_new_category, pattern="^cat_")
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_change_category)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_change_category)
+        ]
     )
     application.add_handler(change_cat_conv)
     
@@ -479,7 +490,9 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_tag)
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_add_tag)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_add_tag)
+        ]
     )
     application.add_handler(tags_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
