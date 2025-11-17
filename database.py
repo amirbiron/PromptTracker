@@ -38,12 +38,17 @@ class Database:
         self.prompts.create_index([("created_at", DESCENDING)])
         self.prompts.create_index([("title", TEXT), ("content", TEXT)])
         self.prompts.create_index([("is_deleted", ASCENDING)])
-        # קוד קצר ייחודי לכל משתמש (sparse כדי לא לשבור מסמכים ללא שדה)
+        # קוד קצר ייחודי לכל משתמש; מתעלם ממסמכים ללא short_code תקין
+        # נוודא הסרת אינדקס קודם אם נוצר עם אפשרויות שונות
+        try:
+            self.prompts.drop_index("uniq_short_code_per_user")
+        except Exception:
+            pass
         self.prompts.create_index(
             [("user_id", ASCENDING), ("short_code", ASCENDING)],
             unique=True,
-            sparse=True,
-            name="uniq_short_code_per_user"
+            name="uniq_short_code_per_user",
+            partialFilterExpression={"short_code": {"$type": "string"}}
         )
         
         # אינדקס ייחודי למשתמשים
@@ -177,8 +182,14 @@ class Database:
         return None
 
     def backfill_short_codes(self):
-        """מילוי לאחור של short_code למסמכים חסרי שדה זה."""
-        cursor = self.prompts.find({"short_code": {"$exists": False}})
+        """מילוי לאחור של short_code למסמכים חסרי שדה זה או עם ערך לא תקין."""
+        cursor = self.prompts.find({
+            "$or": [
+                {"short_code": {"$exists": False}},
+                {"short_code": None},
+                {"short_code": ""}
+            ]
+        })
         for doc in cursor:
             user_id = doc.get("user_id")
             _id = str(doc.get("_id"))
