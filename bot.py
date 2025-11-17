@@ -16,6 +16,7 @@ from telegram.ext import (
 )
 
 import config
+from distributed_lock import MongoDistributedLock
 from database import db
 from keyboards import main_menu_keyboard, back_button
 from handlers.save import (
@@ -408,7 +409,23 @@ def main():
     if not config.BOT_TOKEN:
         logger.error("BOT_TOKEN is not set!")
         return
-    
+
+    # Start health server early so platform health checks pass even while waiting for lock
+    start_healthcheck_server()
+
+    # Acquire distributed lock to ensure a single polling instance
+    try:
+        lock = MongoDistributedLock(
+            mongo_uri=config.MONGO_URI,
+            db_name=config.MONGO_DB_NAME,
+            collection_name="bot_locks",
+        )
+        lock.acquire_blocking()
+        lock.start_heartbeat()
+    except Exception as exc:
+        logger.error("Failed to acquire distributed lock: %s", exc)
+        return
+
     # יצירת האפליקציה
     application = Application.builder().token(config.BOT_TOKEN).build()
     
@@ -537,7 +554,6 @@ def main():
     application.add_error_handler(error_handler)
     
     # הפעלת הבוט
-    start_healthcheck_server()
     logger.info("🚀 Bot is starting...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
