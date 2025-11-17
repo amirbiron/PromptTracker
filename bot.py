@@ -486,6 +486,8 @@ def main():
     application.add_handler(change_cat_conv)
     
     # Callback handlers
+    # חזרה לתפריט ראשי בכל מקום שאינו בשיחה
+    application.add_handler(CallbackQueryHandler(back_to_main_from_conv, pattern="^back_main$"))
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^my_prompts$"))
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^page_"))
     application.add_handler(CallbackQueryHandler(view_prompt_details, pattern="^view_"))
