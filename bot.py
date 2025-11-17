@@ -476,8 +476,9 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel_save),
-            CallbackQueryHandler(cancel_save, pattern="^back_main$"),
-            CallbackQueryHandler(back_to_main, pattern="^back_main$")
+            # תמיכה לאחור בכפתורי back ישנים
+            CallbackQueryHandler(cancel_save, pattern="^(back_main|back|go_back)$"),
+            CallbackQueryHandler(back_to_main, pattern="^(back_main|back|go_back)$")
         ]
     )
     application.add_handler(save_conv)
@@ -520,7 +521,11 @@ def main():
                 CallbackQueryHandler(apply_new_category, pattern="^cat_")
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel_change_category)]
+        fallbacks=[
+            CommandHandler("cancel", cancel_change_category),
+            # מאפשר יציאה לאחור מתוך מצב שינוי קטגוריה (גם לגרסאות ישנות)
+            CallbackQueryHandler(back_to_main, pattern="^(back_main|back|go_back)$")
+        ]
     )
     application.add_handler(change_cat_conv)
     
@@ -559,6 +564,8 @@ def main():
     application.add_handler(tags_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
+    # תאימות לאחור לכפתורי חזרה ישנים (מחוץ לשיחות)
+    application.add_handler(CallbackQueryHandler(back_to_main, pattern="^(back_main|back|go_back)$"))
     # ניקוי מצב החיפוש לאחר שטופלו שאר ה-handlers הספציפיים
     application.add_handler(CallbackQueryHandler(exit_search_mode_on_callback, block=False))
     
