@@ -69,8 +69,7 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = title[:40] + "..."
         
         text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
-        text += f"   📁 {escape_html(prompt['category'])} | "
-        text += f"🔢 {prompt['use_count']} שימושים\n"
+        text += f"   📁 {escape_html(prompt['category'])}\n"
         
         # תגיות
         if prompt.get('tags'):
