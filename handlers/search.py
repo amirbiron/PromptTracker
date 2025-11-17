@@ -4,7 +4,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
 from database import db
-from keyboards import category_keyboard, back_button, prompt_list_item_keyboard
+from keyboards import category_keyboard, back_button, main_menu_keyboard
 import config
 from utils import escape_html
 
@@ -18,7 +18,7 @@ async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔍 <b>חיפוש פרומפטים</b>\n\n"
         "שלח מילת חיפוש או ביטוי לחיפוש בכל הפרומפטים שלך.\n\n"
         "💡 <i>טיפ: החיפוש מתבצע בכותרת ובתוכן הפרומפט</i>\n\n"
-        "או שלח /cancel לביטול."
+        "או שלח /cancel לביטול או לחץ « חזרה לתפריט הראשי."
     )
     if query:
         await query.answer()
@@ -224,3 +224,23 @@ async def show_popular_prompts(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
+
+
+async def cancel_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ביטול מצב החיפוש והחזרה לתפריט."""
+    query = update.callback_query
+
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "❌ החיפוש בוטל.",
+            reply_markup=main_menu_keyboard()
+        )
+
+    return ConversationHandler.END

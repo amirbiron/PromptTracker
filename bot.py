@@ -56,7 +56,8 @@ from handlers.search import (
     show_categories_menu,
     show_tags_menu,
     show_popular_prompts,
-    WAITING_FOR_SEARCH_QUERY
+    WAITING_FOR_SEARCH_QUERY,
+    cancel_search
 )
 from handlers.tags import (
     manage_tags,
@@ -416,10 +417,10 @@ def main():
             ]
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_save)
+            CommandHandler("cancel", cancel_search),
+            CallbackQueryHandler(cancel_search, pattern="^back_main$")
         ]
     )
-    application.add_handler(search_conv)
     
     # Conversation Handler לעריכת תוכן
     edit_content_conv = ConversationHandler(
@@ -495,6 +496,7 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_add_tag)]
     )
     application.add_handler(tags_conv)
+    application.add_handler(search_conv)
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
     
     # Callback כללי
