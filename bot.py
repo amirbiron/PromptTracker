@@ -56,8 +56,8 @@ from handlers.search import (
     show_categories_menu,
     show_tags_menu,
     show_popular_prompts,
-    WAITING_FOR_SEARCH_QUERY,
-    cancel_search
+    cancel_search,
+    exit_search_mode_on_callback
 )
 from handlers.tags import (
     manage_tags,
@@ -378,6 +378,8 @@ def main():
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("trash", trash_command))
     application.add_handler(CommandHandler("restore", restore_command))
+    application.add_handler(CommandHandler("search", start_search))
+    application.add_handler(CommandHandler("cancel", cancel_search))
     # תמיכה גם בצורה /view_<id>
     application.add_handler(MessageHandler(filters.Regex(r"^/view_[0-9a-fA-F]{24}$"), handle_view_command_text))
     
@@ -404,23 +406,6 @@ def main():
         ]
     )
     application.add_handler(save_conv)
-    
-    # Conversation Handler לחיפוש
-    search_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(start_search, pattern="^search$"),
-            CommandHandler("search", start_search)
-        ],
-        states={
-            WAITING_FOR_SEARCH_QUERY: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query)
-            ]
-        },
-        fallbacks=[
-            CommandHandler("cancel", cancel_search),
-            CallbackQueryHandler(cancel_search, pattern="^back_main$")
-        ]
-    )
     
     # Conversation Handler לעריכת תוכן
     edit_content_conv = ConversationHandler(
@@ -465,6 +450,7 @@ def main():
     application.add_handler(change_cat_conv)
     
     # Callback handlers
+    application.add_handler(CallbackQueryHandler(exit_search_mode_on_callback, block=False))
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^my_prompts$"))
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^page_"))
     application.add_handler(CallbackQueryHandler(view_prompt_details, pattern="^view_"))
@@ -482,6 +468,7 @@ def main():
     application.add_handler(CallbackQueryHandler(remove_tag, pattern="^rmtag_"))
     application.add_handler(CallbackQueryHandler(show_settings, pattern="^settings$"))
     application.add_handler(CallbackQueryHandler(trash_command, pattern="^trash$"))
+    application.add_handler(CallbackQueryHandler(start_search, pattern="^search$"))
 
     # Conversation Handler להוספת תגית
     tags_conv = ConversationHandler(
@@ -496,7 +483,7 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_add_tag)]
     )
     application.add_handler(tags_conv)
-    application.add_handler(search_conv)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
     
     # Callback כללי

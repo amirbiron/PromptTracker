@@ -2,23 +2,23 @@
 מטפלי חיפוש וסינון
 """
 from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram.ext import ContextTypes
 from database import db
 from keyboards import category_keyboard, back_button, main_menu_keyboard
 import config
 from utils import escape_html
 
-# States
-WAITING_FOR_SEARCH_QUERY = 0
+SEARCH_FLAG = "awaiting_search_query"
 
 async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """התחלת חיפוש"""
     query = update.callback_query
+    context.user_data[SEARCH_FLAG] = True
     text = (
         "🔍 <b>חיפוש פרומפטים</b>\n\n"
         "שלח מילת חיפוש או ביטוי לחיפוש בכל הפרומפטים שלך.\n\n"
         "💡 <i>טיפ: החיפוש מתבצע בכותרת ובתוכן הפרומפט</i>\n\n"
-        "או שלח /cancel לביטול או לחץ « חזרה לתפריט הראשי."
+        "ליציאה – שלח /cancel או פשוט לחץ על כל כפתור אחר."
     )
     if query:
         await query.answer()
@@ -33,32 +33,34 @@ async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
-    
-    return WAITING_FOR_SEARCH_QUERY
 
 async def receive_search_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """קבלת שאילתת חיפוש"""
+    """קבלת שאילתת חיפוש כאשר מצב החיפוש פעיל"""
+    if not context.user_data.get(SEARCH_FLAG):
+        return
+
+    message = update.message
+    if not message:
+        return
+
+    query_text = message.text
+    if not query_text:
+        return
+
     user = update.effective_user
-    query_text = update.message.text
-    
-    if query_text == '/cancel':
-        await update.message.reply_text(
-            "❌ החיפוש בוטל.",
-            reply_markup=back_button("back_main")
-        )
-        return ConversationHandler.END
-    
+
     # חיפוש
     results = db.search_prompts(user.id, query=query_text, limit=20)
+    context.user_data.pop(SEARCH_FLAG, None)
     
     if not results:
-        await update.message.reply_text(
+        await message.reply_text(
             f"🔍 לא נמצאו תוצאות עבור: <b>{escape_html(query_text)}</b>\n\n"
             f"נסה מילות חיפוש אחרות.",
             parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
-        return ConversationHandler.END
+        return
     
     # הצגת תוצאות
     text = f"🔍 <b>תוצאות חיפוש:</b> \"{escape_html(query_text)}\"\n"
@@ -76,13 +78,11 @@ async def receive_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
         text += f"   📁 {escape_html(prompt['category'])}\n"
         text += f"   /view_{str(prompt['_id'])}\n\n"
     
-    await update.message.reply_text(
+    await message.reply_text(
         text,
         parse_mode='HTML',
         reply_markup=back_button("back_main")
     )
-    
-    return ConversationHandler.END
 
 async def filter_by_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """סינון לפי קטגוריה"""
@@ -227,8 +227,18 @@ async def show_popular_prompts(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def cancel_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ביטול מצב החיפוש והחזרה לתפריט."""
+    """ביטול מצב החיפוש והחזרה לתפריט, כאשר המשתמש שולח /cancel או לוחץ חזרה."""
     query = update.callback_query
+    message = update.message
+    was_waiting = context.user_data.pop(SEARCH_FLAG, None)
+
+    if not was_waiting:
+        if message:
+            await message.reply_text(
+                "ℹ️ אין חיפוש פעיל כרגע.",
+                reply_markup=back_button("back_main")
+            )
+        return
 
     if query:
         await query.answer()
@@ -238,9 +248,13 @@ async def cancel_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
     else:
-        await update.message.reply_text(
+        await message.reply_text(
             "❌ החיפוש בוטל.",
             reply_markup=main_menu_keyboard()
         )
 
-    return ConversationHandler.END
+
+async def exit_search_mode_on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ניקוי מצב החיפוש בלחיצה על כפתורים אחרים כדי שלא ימשיכו ליירט הודעות."""
+    if context.user_data.get(SEARCH_FLAG):
+        context.user_data.pop(SEARCH_FLAG, None)
