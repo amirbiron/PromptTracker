@@ -353,6 +353,25 @@ async def button_handler(update: Update, context):
     
     # הפניה לפונקציות אחרות תתבצע דרך ה-handlers
 
+
+async def back_to_main(update: Update, context):
+    """סיום כל שיחה פעילה וחזרה לתפריט הראשי."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await query.edit_message_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await update.message.reply_text(
+            "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
+            parse_mode='HTML',
+            reply_markup=main_menu_keyboard()
+        )
+    return ConversationHandler.END
+
 async def error_handler(update: Update, context):
     """טיפול בשגיאות"""
     logger.error(f"Update {update} caused error {context.error}")
@@ -407,7 +426,8 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel_save),
-            CallbackQueryHandler(cancel_save, pattern="^back_main$")
+            CallbackQueryHandler(cancel_save, pattern="^back_main$"),
+            CallbackQueryHandler(back_to_main, pattern="^back_main$")
         ]
     )
     application.add_handler(save_conv)
@@ -423,7 +443,8 @@ def main():
             ]
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_save)
+            CommandHandler("cancel", cancel_save),
+            CallbackQueryHandler(back_to_main, pattern="^back_main$")
         ]
     )
     application.add_handler(edit_content_conv)
@@ -439,7 +460,8 @@ def main():
             ]
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_save)
+            CommandHandler("cancel", cancel_save),
+            CallbackQueryHandler(back_to_main, pattern="^back_main$")
         ]
     )
     application.add_handler(edit_title_conv)
@@ -455,7 +477,8 @@ def main():
             ]
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_change_category)
+            CommandHandler("cancel", cancel_change_category),
+            CallbackQueryHandler(back_to_main, pattern="^back_main$")
         ]
     )
     application.add_handler(change_cat_conv)
@@ -491,7 +514,8 @@ def main():
             ]
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_add_tag)
+            CommandHandler("cancel", cancel_add_tag),
+            CallbackQueryHandler(back_to_main, pattern="^back_main$")
         ]
     )
     application.add_handler(tags_conv)
