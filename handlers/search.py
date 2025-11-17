@@ -76,7 +76,7 @@ async def receive_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
         
         text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
         text += f"   📁 {escape_html(prompt['category'])}\n"
-        text += f"   /view_{str(prompt['_id'])}\n\n"
+        text += f"   /view_{escape_html(prompt.get('short_code', str(prompt['_id'])))}\n\n"
     
     await message.reply_text(
         text,
@@ -124,7 +124,7 @@ async def filter_by_category(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         text += f"{i}. {fav}<b>{escape_html(title)}</b>\n"
         text += f"   🔢 {prompt['use_count']} שימושים\n"
-        text += f"   /view_{str(prompt['_id'])}\n\n"
+        text += f"   /view_{escape_html(prompt.get('short_code', str(prompt['_id'])))}\n\n"
     
     await query.edit_message_text(
         text,
@@ -210,7 +210,7 @@ async def show_popular_prompts(update: Update, context: ContextTypes.DEFAULT_TYP
             
             text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
             text += f"   🔢 {prompt['use_count']} שימושים\n"
-            text += f"   /view_{str(prompt['_id'])}\n\n"
+            text += f"   /view_{escape_html(prompt.get('short_code', str(prompt['_id'])))}\n\n"
     
     if update.callback_query:
         await update.callback_query.edit_message_text(

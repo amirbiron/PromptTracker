@@ -380,8 +380,8 @@ def main():
     application.add_handler(CommandHandler("restore", restore_command))
     application.add_handler(CommandHandler("search", start_search))
     application.add_handler(CommandHandler("cancel", cancel_search))
-    # תמיכה גם בצורה /view_<id>
-    application.add_handler(MessageHandler(filters.Regex(r"^/view_[0-9a-fA-F]{24}$"), handle_view_command_text))
+    # תמיכה גם בצורה /view_<id> (ObjectId) וגם /view_<SHORT>
+    application.add_handler(MessageHandler(filters.Regex(r"^/view_([0-9a-fA-F]{24}|[0-9a-fA-F]{4,8})$"), handle_view_command_text))
     
     # Conversation Handler לשמירת פרומפט
     save_conv = ConversationHandler(
