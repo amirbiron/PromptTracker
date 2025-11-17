@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from pymongo import MongoClient, ASCENDING, ReturnDocument
+from pymongo import MongoClient, ASCENDING
 from pymongo.collection import Collection
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError
 
 import config
 
@@ -125,8 +125,9 @@ class MongoDistributedLock:
     def _try_acquire(self) -> bool:
         now = self._now()
         expires = now + timedelta(seconds=self.cfg.lease_seconds)
+        # Step 1: try to update an existing (expired or re-entrant) doc without upsert
         try:
-            doc = self.collection.find_one_and_update(
+            result = self.collection.update_one(
                 {
                     "_id": self.cfg.service_id,
                     "$or": [
@@ -141,13 +142,11 @@ class MongoDistributedLock:
                         "host": self.cfg.host,
                         "updatedAt": now,
                         "expiresAt": expires,
-                    },
-                    "$setOnInsert": {"createdAt": now},
+                    }
                 },
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
+                upsert=False,
             )
-            if doc and doc.get("owner") == self.cfg.instance_id:
+            if result.modified_count == 1:
                 self._is_owner = True
                 logger.info(
                     "Acquired distributed lock '%s' as %s on %s (lease=%ss)",
@@ -157,9 +156,37 @@ class MongoDistributedLock:
                     self.cfg.lease_seconds,
                 )
                 return True
+        except PyMongoError as exc:
+            logger.error("Lock acquire update failed: %s", exc)
+            return False
+
+        # Step 2: try to insert a new doc (first writer wins). Treat DuplicateKey as contention.
+        try:
+            self.collection.insert_one(
+                {
+                    "_id": self.cfg.service_id,
+                    "owner": self.cfg.instance_id,
+                    "host": self.cfg.host,
+                    "createdAt": now,
+                    "updatedAt": now,
+                    "expiresAt": expires,
+                }
+            )
+            self._is_owner = True
+            logger.info(
+                "Acquired distributed lock '%s' as %s on %s (lease=%ss)",
+                self.cfg.service_id,
+                self.cfg.instance_id,
+                self.cfg.host,
+                self.cfg.lease_seconds,
+            )
+            return True
+        except DuplicateKeyError:
+            # Another instance inserted the doc concurrently: lock is held by someone else
+            logger.info("Lock '%s' currently held by another instance", self.cfg.service_id)
             return False
         except PyMongoError as exc:
-            logger.error("Lock acquire attempt failed: %s", exc)
+            logger.error("Lock acquire insert failed: %s", exc)
             return False
 
     def acquire_blocking(self) -> None:
