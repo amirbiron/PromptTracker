@@ -246,7 +246,7 @@ async def start_add_category(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "➕ <b>קטגוריה חדשה</b>\n\n"
         "שלח שם לקטגוריה החדשה.\n"
         "אפשר להתחיל באימוג׳י ולאחריו השם (לדוגמה: 🤖 בוטים).\n\n"
-        "או שלח /cancel לביטול.",
+        "או שלח <code>בטל</code> לביטול.",
         parse_mode='HTML'
     )
     return CATEGORY_ADDING
@@ -254,7 +254,12 @@ async def start_add_category(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def receive_new_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """קבלת שם לקטגוריה חדשה."""
     user = update.effective_user
-    emoji, name = _parse_category_input(update.message.text)
+    # תמיכה בביטול באמצעות המילה "בטל"
+    incoming_text = (update.message.text or "").strip()
+    if incoming_text == "בטל":
+        return await cancel_category_edit(update, context)
+
+    emoji, name = _parse_category_input(incoming_text)
     
     if not name:
         await update.message.reply_text(
@@ -299,7 +304,7 @@ async def start_edit_category(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"נוכחי: {category.get('emoji', '📁')} <b>{escape_html(category.get('name', ''))}</b>\n"
         "שלח שם חדש (אפשר להתחיל באימוג׳י) כדי לעדכן. לדוגמה:\n"
         "<code>✍️ כתיבה יצירתית</code>\n\n"
-        "או שלח /cancel לביטול.",
+        "או שלח <code>בטל</code> לביטול.",
         parse_mode='HTML'
     )
     return CATEGORY_RENAMING
@@ -315,7 +320,12 @@ async def receive_updated_category(update: Update, context: ContextTypes.DEFAULT
         )
         return ConversationHandler.END
     
-    emoji, name = _parse_category_input(update.message.text)
+    # תמיכה בביטול באמצעות המילה "בטל"
+    incoming_text = (update.message.text or "").strip()
+    if incoming_text == "בטל":
+        return await cancel_category_edit(update, context)
+
+    emoji, name = _parse_category_input(incoming_text)
     if not name:
         await update.message.reply_text("⚠️ אנא הזן שם תקין (לפחות שני תווים).")
         return CATEGORY_RENAMING
