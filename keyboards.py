@@ -2,7 +2,8 @@
 מקלדות ותפריטים - Inline Keyboards
 """
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from typing import List, Dict
+from typing import List, Dict, Optional
+from urllib.parse import quote_plus
 import config
 
 def main_menu_keyboard():
@@ -30,26 +31,39 @@ def main_menu_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def category_keyboard(include_all: bool = True):
-    """מקלדת בחירת קטגוריה"""
+def category_keyboard(categories: Optional[List[Dict[str, str]]] = None,
+                      include_all: bool = True,
+                      show_manage_button: bool = False):
+    """מקלדת בחירת קטגוריה (מותאם לכל משתמש)."""
     keyboard = []
-    categories = list(config.CATEGORIES.items())
+    category_items: List[Dict[str, str]] = categories or [
+        {"emoji": emoji, "name": name} for emoji, name in config.CATEGORIES.items()
+    ]
     
     # שתי קטגוריות בשורה
-    for i in range(0, len(categories), 2):
+    for i in range(0, len(category_items), 2):
         row = []
         for j in range(2):
-            if i + j < len(categories):
-                emoji, name = categories[i + j]
+            if i + j < len(category_items):
+                item = category_items[i + j]
+                emoji = item.get("emoji", "📁")
+                name = item.get("name", "")
+                encoded = quote_plus(name)
                 row.append(InlineKeyboardButton(
                     f"{emoji} {name}",
-                    callback_data=f"cat_{name}"
+                    callback_data=f"cat_{encoded}"
                 ))
-        keyboard.append(row)
+        if row:
+            keyboard.append(row)
     
     if include_all:
         keyboard.append([
             InlineKeyboardButton("📋 כל הקטגוריות", callback_data="cat_all")
+        ])
+    
+    if show_manage_button:
+        keyboard.append([
+            InlineKeyboardButton("⚙️ נהל קטגוריות", callback_data="catcfg_manage")
         ])
     
     keyboard.append([

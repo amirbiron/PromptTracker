@@ -3,6 +3,7 @@
 """
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
+from urllib.parse import unquote_plus
 from database import db
 from keyboards import category_keyboard, prompt_actions_keyboard, back_button
 import config
@@ -74,6 +75,7 @@ async def receive_prompt_content(update: Update, context: ContextTypes.DEFAULT_T
 async def receive_prompt_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """קבלת כותרת לפרומפט"""
     title = update.message.text
+    user = update.effective_user
     
     if title.strip() in ['/skip', 'דלג']:
         # שימוש בכותרת אוטומטית
@@ -83,11 +85,13 @@ async def receive_prompt_title(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['new_prompt_title'] = title
     
     # בקשת קטגוריה
+    categories = db.get_user_categories(user.id)
+    
     await update.message.reply_text(
         f"✅ הכותרת נשמרה: <b>{escape_html(title)}</b>\n\n"
         f"📁 כעת, בחר קטגוריה:",
         parse_mode='HTML',
-        reply_markup=category_keyboard(include_all=False)
+        reply_markup=category_keyboard(categories, include_all=False)
     )
     
     return WAITING_FOR_CATEGORY
@@ -98,7 +102,12 @@ async def receive_prompt_category(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     
     user = update.effective_user
-    category = query.data.replace('cat_', '')
+    raw_value = query.data.replace('cat_', '', 1)
+    if raw_value == 'all':
+        await query.answer("אנא בחר קטגוריה ספציפית", show_alert=True)
+        return WAITING_FOR_CATEGORY
+    category = unquote_plus(raw_value)
+    category = db.ensure_category_name(user.id, category)
     
     # שמירת הפרומפט
     content = context.user_data.get('new_prompt_content')
@@ -115,7 +124,8 @@ async def receive_prompt_category(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     
     # הצגת הפרומפט החדש
-    emoji = config.CATEGORY_EMOJIS.get(category, '📄')
+    emoji_map = db.get_category_lookup(user.id)
+    emoji = emoji_map.get(category, '📁')
     
     await query.edit_message_text(
         f"✅ <b>הפרומפט נשמר בהצלחה!</b>\n\n"

@@ -56,10 +56,20 @@ from handlers.search import (
     receive_search_query,
     filter_by_category,
     show_categories_menu,
+    manage_categories,
+    start_add_category,
+    receive_new_category,
+    start_edit_category,
+    receive_updated_category,
+    start_remove_category,
+    apply_remove_category,
     show_tags_menu,
     show_popular_prompts,
     cancel_search,
-    exit_search_mode_on_callback
+    cancel_category_edit,
+    exit_search_mode_on_callback,
+    CATEGORY_ADDING,
+    CATEGORY_RENAMING
 )
 from handlers.tags import (
     manage_tags,
@@ -219,6 +229,7 @@ async def stats_command(update: Update, context):
     if update.callback_query:
         await update.callback_query.answer()
     stats = db.get_user_statistics(user.id)
+    category_lookup = db.get_category_lookup(user.id)
     
     user_stats = stats['user']
     
@@ -231,7 +242,7 @@ async def stats_command(update: Update, context):
     if stats['categories']:
         text += "📁 <b>קטגוריות מובילות:</b>\n"
         for cat in stats['categories'][:5]:
-            emoji = config.CATEGORY_EMOJIS.get(cat['_id'], '📄')
+            emoji = category_lookup.get(cat['_id'], '📁')
             text += f"  {emoji} {cat['_id']}: {cat['count']}\n"
         text += "\n"
     
@@ -283,8 +294,9 @@ async def trash_command(update: Update, context):
     text = f"🗑️ <b>סל המחזור</b> ({len(trash_items)})\n\n"
     text += "<i>פרומפטים נמחקים לצמיתות אחרי 30 יום</i>\n\n"
     
+    category_lookup = db.get_category_lookup(user.id)
     for i, prompt in enumerate(trash_items[:20], 1):
-        emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+        emoji = category_lookup.get(prompt['category'], '📁')
         title = prompt['title']
         if len(title) > 40:
             title = title[:40] + "..."
@@ -541,6 +553,9 @@ def main():
     application.add_handler(CallbackQueryHandler(cancel_delete, pattern="^cancel_"))
     application.add_handler(CallbackQueryHandler(view_favorites, pattern="^favorites$"))
     application.add_handler(CallbackQueryHandler(show_categories_menu, pattern="^categories$"))
+    application.add_handler(CallbackQueryHandler(manage_categories, pattern="^catcfg_manage$"))
+    application.add_handler(CallbackQueryHandler(start_remove_category, pattern="^catcfg_remove_"))
+    application.add_handler(CallbackQueryHandler(apply_remove_category, pattern="^catcfg_remove_confirm_"))
     application.add_handler(CallbackQueryHandler(filter_by_category, pattern="^cat_"))
     application.add_handler(CallbackQueryHandler(show_tags_menu, pattern="^tags$"))
     application.add_handler(CallbackQueryHandler(manage_tags, pattern="^tags_"))
@@ -562,6 +577,27 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_add_tag)]
     )
     application.add_handler(tags_conv)
+    
+    # Conversation Handler לניהול קטגוריות משתמש
+    category_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_add_category, pattern="^catcfg_add$"),
+            CallbackQueryHandler(start_edit_category, pattern="^catcfg_edit_")
+        ],
+        states={
+            CATEGORY_ADDING: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_category)
+            ],
+            CATEGORY_RENAMING: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_updated_category)
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_category_edit),
+            CallbackQueryHandler(cancel_category_edit, pattern="^catcfg_manage$")
+        ]
+    )
+    application.add_handler(category_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
     # תאימות לאחור לכפתורי חזרה ישנים (מחוץ לשיחות)

@@ -5,6 +5,7 @@ from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+from copy import deepcopy
 import hashlib
 import re
 import config
@@ -53,6 +54,44 @@ class Database:
         
         # אינדקס ייחודי למשתמשים
         self.users.create_index([("user_id", ASCENDING)], unique=True)
+
+    # ====== קטגוריות ברירת מחדל ומסייעים פנימיים ======
+
+    def _default_categories(self) -> List[Dict[str, str]]:
+        """החזרת רשימת קטגוריות ברירת מחדל (deepcopy למניעת שיתופים)."""
+        return deepcopy([
+            {"emoji": emoji, "name": name}
+            for emoji, name in config.CATEGORIES.items()
+        ])
+
+    @staticmethod
+    def _normalize_category_name(name: str) -> str:
+        return (name or "").strip()
+
+    @staticmethod
+    def _normalize_category_emoji(emoji_value: str) -> str:
+        emoji_value = (emoji_value or "").strip()
+        # תשמור עד 4 תווים (מספיק גם לאימוג'י עם modifier)
+        return emoji_value[:4] if emoji_value else "📁"
+
+    @staticmethod
+    def _category_name_key(name: str) -> str:
+        return Database._normalize_category_name(name).lower()
+
+    def _fallback_category(self, categories: List[Dict[str, str]], removed: Optional[str] = None) -> Optional[str]:
+        """בחירת קטגוריית fallback כאשר קטגוריה מוסרת."""
+        if not categories:
+            return None
+        removed_key = self._category_name_key(removed) if removed else None
+        # עדיפות ל-"Other" אם קיים
+        for cat in categories:
+            if self._category_name_key(cat.get("name")) == "other" and self._category_name_key(cat.get("name")) != removed_key:
+                return cat.get("name")
+        # אחרת החזר את הראשונה שאינה הקטגוריה שהוסרה
+        for cat in categories:
+            if self._category_name_key(cat.get("name")) != removed_key:
+                return cat.get("name")
+        return None
     
     # ========== פעולות משתמשים ==========
     
@@ -78,9 +117,17 @@ class Database:
                     "total_prompts": 0,
                     "total_uses": 0,
                     "total_collections": 0
-                }
+                },
+                "categories": self._default_categories()
             }
             self.users.insert_one(user)
+        elif not user.get("categories"):
+            categories = self._default_categories()
+            self.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"categories": categories}}
+            )
+            user["categories"] = categories
         
         return user
     
@@ -91,11 +138,129 @@ class Database:
             {"$inc": {f"stats.{stat_name}": increment}}
         )
     
+    # ========== קטגוריות משתמש ==========
+
+    def get_user_categories(self, user_id: int) -> List[Dict[str, str]]:
+        """החזרת רשימת הקטגוריות של משתמש (יוזנו ברירות מחדל אם חסרות)."""
+        user = self.users.find_one({"user_id": user_id}, {"categories": 1})
+        categories = (user or {}).get("categories")
+        if not categories:
+            categories = self._default_categories()
+            self.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"categories": categories}},
+                upsert=True
+            )
+        return deepcopy(categories)
+
+    def get_category_lookup(self, user_id: int) -> Dict[str, str]:
+        """מילון מהיר של שם קטגוריה -> אימוג׳י."""
+        return {
+            cat.get("name"): cat.get("emoji", "📁")
+            for cat in self.get_user_categories(user_id)
+        }
+
+    def get_category(self, user_id: int, name: str) -> Optional[Dict[str, str]]:
+        """החזרת אובייקט קטגוריה לפי שם (case-insensitive)."""
+        categories = self.get_user_categories(user_id)
+        normalized = self._category_name_key(name or "")
+        for cat in categories:
+            if self._category_name_key(cat.get("name")) == normalized:
+                return cat
+        return None
+
+    def ensure_category_name(self, user_id: int, category: Optional[str]) -> str:
+        """ודאות שהקטגוריה קיימת; אם לא – חזרה לברירת מחדל."""
+        categories = self.get_user_categories(user_id)
+        normalized = self._category_name_key(category or "")
+        for cat in categories:
+            if self._category_name_key(cat.get("name")) == normalized:
+                return cat.get("name")
+        fallback = self._fallback_category(categories)
+        return fallback or "Other"
+
+    def add_user_category(self, user_id: int, name: str, emoji: str = "📁") -> bool:
+        name = self._normalize_category_name(name)
+        if len(name) < 2 or len(name) > 40:
+            raise ValueError("שם הקטגוריה חייב להיות בין 2 ל-40 תווים.")
+        emoji = self._normalize_category_emoji(emoji)
+        categories = self.get_user_categories(user_id)
+        key = self._category_name_key(name)
+        if any(self._category_name_key(cat.get("name")) == key for cat in categories):
+            raise ValueError("קטגוריה בשם זה כבר קיימת.")
+        categories.append({"emoji": emoji, "name": name})
+        self.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"categories": categories}}
+        )
+        return True
+
+    def update_user_category(self, user_id: int, old_name: str, new_name: str, emoji: str) -> bool:
+        new_name = self._normalize_category_name(new_name)
+        if len(new_name) < 2 or len(new_name) > 40:
+            raise ValueError("שם הקטגוריה חייב להיות בין 2 ל-40 תווים.")
+        emoji = self._normalize_category_emoji(emoji)
+        categories = self.get_user_categories(user_id)
+        old_key = self._category_name_key(old_name)
+        target = None
+        stored_old_name = None
+        for cat in categories:
+            if self._category_name_key(cat.get("name")) == old_key:
+                target = cat
+                stored_old_name = cat.get("name")
+                break
+        if not target:
+            raise ValueError("הקטגוריה המבוקשת לא נמצאה.")
+        new_key = self._category_name_key(new_name)
+        if new_key != old_key and any(self._category_name_key(cat.get("name")) == new_key for cat in categories):
+            raise ValueError("קטגוריה בשם זה כבר קיימת.")
+        target["name"] = new_name
+        target["emoji"] = emoji
+        self.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"categories": categories}}
+        )
+        if new_key != old_key and stored_old_name:
+            self.prompts.update_many(
+                {"user_id": user_id, "category": stored_old_name},
+                {"$set": {"category": new_name}}
+            )
+        return True
+
+    def delete_user_category(self, user_id: int, name: str) -> str:
+        categories = self.get_user_categories(user_id)
+        if len(categories) <= 1:
+            raise ValueError("יש להשאיר לפחות קטגוריה אחת.")
+        key = self._category_name_key(name)
+        target_name = None
+        filtered = []
+        for cat in categories:
+            if self._category_name_key(cat.get("name")) == key:
+                target_name = cat.get("name")
+                continue
+            filtered.append(cat)
+        if target_name is None:
+            raise ValueError("הקטגוריה המבוקשת לא נמצאה.")
+        fallback = self._fallback_category(filtered, removed=target_name)
+        if not fallback:
+            raise ValueError("אין קטגוריית fallback זמינה.")
+        # עדכון פרומפטים לקטגוריית fallback
+        self.prompts.update_many(
+            {"user_id": user_id, "category": target_name},
+            {"$set": {"category": fallback}}
+        )
+        self.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"categories": filtered}}
+        )
+        return fallback
+
     # ========== פעולות פרומפטים ==========
     
     def save_prompt(self, user_id: int, content: str, title: str = None,
                    category: str = "Other", tags: List[str] = None) -> Dict:
         """שמירת פרומפט חדש"""
+        category = self.ensure_category_name(user_id, category)
         prompt = {
             "user_id": user_id,
             "content": content,
