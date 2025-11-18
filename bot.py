@@ -586,10 +586,13 @@ def main():
         ],
         states={
             CATEGORY_ADDING: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_category)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_category),
+                # כל לחיצה על כפתור תבטל את מצב הוספת/עריכת קטגוריה
+                CallbackQueryHandler(cancel_category_edit)
             ],
             CATEGORY_RENAMING: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_updated_category)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_updated_category),
+                CallbackQueryHandler(cancel_category_edit)
             ]
         },
         fallbacks=[
