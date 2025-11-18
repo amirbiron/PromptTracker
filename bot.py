@@ -595,7 +595,8 @@ def main():
         fallbacks=[
             CommandHandler("cancel", cancel_category_edit),
             CallbackQueryHandler(cancel_category_edit, pattern="^catcfg_manage$")
-        ]
+        ],
+        allow_reentry=True
     )
     application.add_handler(category_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
