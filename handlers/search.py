@@ -403,9 +403,33 @@ async def apply_remove_category(update: Update, context: ContextTypes.DEFAULT_TY
     )
     await manage_categories(update, context, notice, skip_answer=True)
 
-async def cancel_category_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ביטול תהליך הוספה/עריכת קטגוריה."""
+async def cancel_category_edit(update: Update, context: ContextTypes.DEFAULT_TYPE, redirect: str = "manage"):
+    """ביטול תהליך הוספה/עריכת קטגוריה, עם אפשרות לבחור לאן לחזור."""
     context.user_data.pop('category_edit_target', None)
+    
+    if redirect == "categories":
+        # חזרה לרשימת הקטגוריות הכללית
+        await show_categories_menu(update, context)
+        return ConversationHandler.END
+    
+    if redirect == "main":
+        # חזרה לתפריט הראשי
+        query = update.callback_query
+        text = "📋 <b>PromptTracker</b>\n\nבחר פעולה:"
+        if query:
+            await query.answer()
+            await query.edit_message_text(
+                text,
+                parse_mode='HTML',
+                reply_markup=main_menu_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                parse_mode='HTML',
+                reply_markup=main_menu_keyboard()
+            )
+        return ConversationHandler.END
     
     if update.callback_query:
         await update.callback_query.answer()
@@ -416,6 +440,16 @@ async def cancel_category_edit(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=back_button("catcfg_manage")
         )
     return ConversationHandler.END
+
+
+async def cancel_category_edit_to_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ביטול והשלכת המשתמש חזרה לתפריט הקטגוריות."""
+    return await cancel_category_edit(update, context, redirect="categories")
+
+
+async def cancel_category_edit_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ביטול והחזרה לתפריט הראשי."""
+    return await cancel_category_edit(update, context, redirect="main")
 
 async def show_tags_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """הצגת תפריט תגיות"""
