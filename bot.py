@@ -67,6 +67,8 @@ from handlers.search import (
     show_popular_prompts,
     cancel_search,
     cancel_category_edit,
+    cancel_category_edit_to_categories,
+    cancel_category_edit_to_main,
     exit_search_mode_on_callback,
     CATEGORY_ADDING,
     CATEGORY_RENAMING
@@ -540,6 +542,30 @@ def main():
         ]
     )
     application.add_handler(change_cat_conv)
+
+    # Conversation Handler לניהול קטגוריות משתמש
+    category_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_add_category, pattern="^catcfg_add$"),
+            CallbackQueryHandler(start_edit_category, pattern="^catcfg_edit_")
+        ],
+        states={
+            CATEGORY_ADDING: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_category)
+            ],
+            CATEGORY_RENAMING: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_updated_category)
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_category_edit),
+            CallbackQueryHandler(cancel_category_edit, pattern="^catcfg_manage$"),
+            CallbackQueryHandler(cancel_category_edit_to_categories, pattern="^categories$"),
+            CallbackQueryHandler(cancel_category_edit_to_main, pattern="^(back_main|back|go_back)$")
+        ],
+        allow_reentry=True
+    )
+    application.add_handler(category_conv)
     
     # Callback handlers
     application.add_handler(CallbackQueryHandler(view_my_prompts, pattern="^my_prompts$"))
@@ -577,27 +603,6 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_add_tag)]
     )
     application.add_handler(tags_conv)
-    
-    # Conversation Handler לניהול קטגוריות משתמש
-    category_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(start_add_category, pattern="^catcfg_add$"),
-            CallbackQueryHandler(start_edit_category, pattern="^catcfg_edit_")
-        ],
-        states={
-            CATEGORY_ADDING: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_category)
-            ],
-            CATEGORY_RENAMING: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_updated_category)
-            ]
-        },
-        fallbacks=[
-            CommandHandler("cancel", cancel_category_edit),
-            CallbackQueryHandler(cancel_category_edit, pattern="^catcfg_manage$")
-        ]
-    )
-    application.add_handler(category_conv)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_search_query))
     application.add_handler(CallbackQueryHandler(stats_command, pattern="^stats$"))
     # תאימות לאחור לכפתורי חזרה ישנים (מחוץ לשיחות)
