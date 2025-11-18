@@ -3,6 +3,7 @@
 """
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
+from urllib.parse import unquote_plus
 from database import db
 from keyboards import (
     prompt_actions_keyboard, 
@@ -28,6 +29,7 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
     
     user = update.effective_user
+    category_lookup = db.get_category_lookup(user.id)
     
     # קבלת מספר העמוד
     page = 0
@@ -61,7 +63,7 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"📋 <b>הפרומפטים שלי</b> ({total_count} סה״כ)\n\n"
     
     for i, prompt in enumerate(prompts, start=skip + 1):
-        emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+        emoji = category_lookup.get(prompt['category'], '📁')
         fav = "⭐ " if prompt.get('is_favorite') else ""
         
         title = prompt['title']
@@ -132,7 +134,8 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     # בניית ההודעה
-    emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+    category_lookup = db.get_category_lookup(user.id)
+    emoji = category_lookup.get(prompt['category'], '📁')
     fav = "⭐ " if prompt.get('is_favorite') else ""
     
     text = f"{fav}<b>{escape_html(prompt['title'])}</b>\n"
@@ -321,12 +324,14 @@ async def start_change_category(update: Update, context: ContextTypes.DEFAULT_TY
     """התחלת שינוי קטגוריה"""
     query = update.callback_query
     await query.answer()
+    user = update.effective_user
     prompt_id = query.data.replace('chcat_', '')
     context.user_data['changing_category_for'] = prompt_id
+    categories = db.get_user_categories(user.id)
     await query.edit_message_text(
         "📁 <b>שינוי קטגוריה</b>\n\nבחר קטגוריה חדשה:",
         parse_mode='HTML',
-        reply_markup=category_keyboard(include_all=False)
+        reply_markup=category_keyboard(categories, include_all=False)
     )
     return CHANGING_CATEGORY
 
@@ -339,7 +344,11 @@ async def apply_new_category(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not prompt_id:
         await query.edit_message_text("⚠️ שגיאה: לא נמצא פרומפט לשינוי קטגוריה.")
         return ConversationHandler.END
-    category = query.data.replace('cat_', '')
+    raw_value = query.data.replace('cat_', '', 1)
+    if raw_value == 'all':
+        await query.answer("אנא בחר קטגוריה ספציפית", show_alert=True)
+        return CHANGING_CATEGORY
+    category = db.ensure_category_name(user.id, unquote_plus(raw_value))
     success = db.update_prompt(prompt_id, user.id, {'category': category})
     if success:
         await query.edit_message_text(
@@ -457,8 +466,9 @@ async def view_favorites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     text = f"⭐ <b>המועדפים שלי</b> ({len(prompts)})\n\n"
     
+    category_lookup = db.get_category_lookup(user.id)
     for i, prompt in enumerate(prompts[:20], 1):  # מגביל ל-20
-        emoji = config.CATEGORY_EMOJIS.get(prompt['category'], '📄')
+        emoji = category_lookup.get(prompt['category'], '📁')
         title = prompt['title']
         if len(title) > 40:
             title = title[:40] + "..."
