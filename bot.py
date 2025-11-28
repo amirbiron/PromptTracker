@@ -137,14 +137,18 @@ def start_healthcheck_server():
 
 
 async def setup_bot_commands(application: Application):
-    """Register admin-only command in Telegram's command menu."""
+    """Register admin-specific commands in Telegram's command menu."""
     admin_id = config.ADMIN_USER_ID
     if not admin_id:
         return
     bot = application.bot
     try:
+        admin_commands = [
+            BotCommand("start", "מתחילים ✅"),
+            BotCommand("statsa", "סטטיסטיקות מנהל")
+        ]
         await bot.set_my_commands(
-            [BotCommand("statsa", "סטטיסטיקות מנהל")],
+            admin_commands,
             scope=BotCommandScopeChat(chat_id=admin_id)
         )
     except Exception as exc:
