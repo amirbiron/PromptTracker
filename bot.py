@@ -137,33 +137,18 @@ def start_healthcheck_server():
 
 
 async def setup_bot_commands(application: Application):
-    """Register the slash commands shown in Telegram's command menu."""
+    """Register admin-only command in Telegram's command menu."""
+    admin_id = config.ADMIN_USER_ID
+    if not admin_id:
+        return
     bot = application.bot
-    default_commands = [
-        BotCommand("start", "תפריט ראשי"),
-        BotCommand("help", "עזרה"),
-        BotCommand("save", "שמור פרומפט"),
-        BotCommand("list", "הפרומפטים שלי"),
-        BotCommand("search", "חיפוש"),
-        BotCommand("favorites", "מועדפים"),
-        BotCommand("stats", "סטטיסטיקות"),
-        BotCommand("categories", "קטגוריות"),
-        BotCommand("tags", "תגיות"),
-        BotCommand("trash", "סל מחזור"),
-    ]
     try:
-        await bot.set_my_commands(default_commands)
-        admin_id = config.ADMIN_USER_ID
-        if admin_id:
-            admin_commands = default_commands + [
-                BotCommand("statsa", "סטטיסטיקות מנהל")
-            ]
-            await bot.set_my_commands(
-                admin_commands,
-                scope=BotCommandScopeChat(chat_id=admin_id)
-            )
+        await bot.set_my_commands(
+            [BotCommand("statsa", "סטטיסטיקות מנהל")],
+            scope=BotCommandScopeChat(chat_id=admin_id)
+        )
     except Exception as exc:
-        logger.warning("Failed setting bot commands: %s", exc)
+        logger.warning("Failed setting admin command menu: %s", exc)
 
 # ========== פקודות בסיס ==========
 
