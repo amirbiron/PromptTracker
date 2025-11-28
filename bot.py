@@ -5,7 +5,7 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timezone
-from telegram import Update
+from telegram import Update, BotCommand, BotCommandScopeChat
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -134,6 +134,36 @@ def start_healthcheck_server():
     )
     thread.start()
     logger.info("Health-check server is listening on port %s", port)
+
+
+async def setup_bot_commands(application: Application):
+    """Register the slash commands shown in Telegram's command menu."""
+    bot = application.bot
+    default_commands = [
+        BotCommand("start", "תפריט ראשי"),
+        BotCommand("help", "עזרה"),
+        BotCommand("save", "שמור פרומפט"),
+        BotCommand("list", "הפרומפטים שלי"),
+        BotCommand("search", "חיפוש"),
+        BotCommand("favorites", "מועדפים"),
+        BotCommand("stats", "סטטיסטיקות"),
+        BotCommand("categories", "קטגוריות"),
+        BotCommand("tags", "תגיות"),
+        BotCommand("trash", "סל מחזור"),
+    ]
+    try:
+        await bot.set_my_commands(default_commands)
+        admin_id = config.ADMIN_USER_ID
+        if admin_id:
+            admin_commands = default_commands + [
+                BotCommand("statsa", "סטטיסטיקות מנהל")
+            ]
+            await bot.set_my_commands(
+                admin_commands,
+                scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+    except Exception as exc:
+        logger.warning("Failed setting bot commands: %s", exc)
 
 # ========== פקודות בסיס ==========
 
@@ -522,7 +552,12 @@ def main():
         return
 
     # יצירת האפליקציה
-    application = Application.builder().token(config.BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(config.BOT_TOKEN)
+        .post_init(setup_bot_commands)
+        .build()
+    )
     
     # פקודות בסיס
     application.add_handler(CommandHandler("start", start_command))
@@ -530,7 +565,7 @@ def main():
     application.add_handler(CommandHandler("list", view_my_prompts))
     application.add_handler(CommandHandler("view", handle_view_command_text))
     application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("statsA", admin_stats_command))
+    application.add_handler(CommandHandler(["statsA", "statsa"], admin_stats_command))
     application.add_handler(CommandHandler("trash", trash_command))
     application.add_handler(CommandHandler("restore", restore_command))
     application.add_handler(CommandHandler("search", start_search))
