@@ -6,8 +6,9 @@ from typing import List, Dict, Optional
 from urllib.parse import quote_plus
 import config
 
-def main_menu_keyboard():
-    """תפריט ראשי"""
+
+def main_menu_keyboard(is_admin: bool = False):
+    """תפריט ראשי (עם כפתורי אדמין ייעודיים במידת הצורך)."""
     keyboard = [
         [
             InlineKeyboardButton("💾 שמור פרומפט", callback_data="new_prompt"),
@@ -23,12 +24,13 @@ def main_menu_keyboard():
         ],
         [
             InlineKeyboardButton("🗑️ סל מחזור", callback_data="trash"),
-        ],
-        [
-            InlineKeyboardButton("📊 סטטיסטיקות", callback_data="stats"),
-            InlineKeyboardButton("⚙️ הגדרות", callback_data="settings")
         ]
     ]
+    admin_row = []
+    if is_admin:
+        admin_row.append(InlineKeyboardButton("👑 סטטיסטיקות", callback_data="stats"))
+    admin_row.append(InlineKeyboardButton("⚙️ הגדרות", callback_data="settings"))
+    keyboard.append(admin_row)
     return InlineKeyboardMarkup(keyboard)
 
 def category_keyboard(categories: Optional[List[Dict[str, str]]] = None,
