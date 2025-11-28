@@ -70,8 +70,8 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(title) > 40:
             title = title[:40] + "..."
         
-        text += f"{i}. {fav}{emoji} <b>{escape_html(title)}</b>\n"
-        text += f"   📁 {escape_html(prompt['category'])}\n"
+        text += f"{i}. {fav}📝 <b>{escape_html(title)}</b>\n"
+        text += f"   {emoji} {escape_html(prompt['category'])}\n"
         
         # תגיות
         if prompt.get('tags'):
