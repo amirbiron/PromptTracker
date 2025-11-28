@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from urllib.parse import quote_plus, unquote_plus
 from database import db
 from keyboards import category_keyboard, back_button, main_menu_keyboard
-from utils import escape_html, is_admin_user
+from utils import escape_html
 
 CATEGORY_ADDING, CATEGORY_RENAMING = range(2)
 SEARCH_FLAG = "awaiting_search_query"
@@ -506,9 +506,6 @@ async def cancel_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     was_waiting = context.user_data.pop(SEARCH_FLAG, None)
 
-    user = update.effective_user
-    is_admin = is_admin_user(user.id if user else None)
-
     if not was_waiting:
         if message:
             await message.reply_text(
@@ -522,12 +519,12 @@ async def cancel_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
             parse_mode='HTML',
-            reply_markup=main_menu_keyboard(is_admin=is_admin)
+            reply_markup=main_menu_keyboard()
         )
     else:
         await message.reply_text(
             "❌ החיפוש בוטל.",
-            reply_markup=main_menu_keyboard(is_admin=is_admin)
+            reply_markup=main_menu_keyboard()
         )
 
 

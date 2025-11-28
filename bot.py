@@ -140,7 +140,6 @@ def start_healthcheck_server():
 async def start_command(update: Update, context):
     """פקודת /start"""
     user = update.effective_user
-    is_admin = is_admin_user(user.id if user else None)
     
     # יצירת/עדכון משתמש
     db.get_or_create_user(
@@ -167,7 +166,7 @@ async def start_command(update: Update, context):
     await update.message.reply_text(
         welcome_text,
         parse_mode='HTML',
-        reply_markup=main_menu_keyboard(is_admin=is_admin)
+        reply_markup=main_menu_keyboard()
     )
 
 async def help_command(update: Update, context):
@@ -181,13 +180,14 @@ async def help_command(update: Update, context):
         "🔹 /list - הצג את כל הפרומפטים",
         "🔹 /search - חיפוש פרומפטים",
         "🔹 /favorites - פרומפטים מועדפים",
+        "🔹 /stats - סטטיסטיקות",
         "🔹 /categories - קטגוריות",
         "🔹 /tags - תגיות",
         "🔹 /trash - סל מחזור",
         "🔹 /settings - הגדרות"
     ]
     if is_admin:
-        commands.insert(5, "🔹 /stats - סטטיסטיקות מנהל")
+        commands.append("🔹 /statsA - סטטיסטיקות מנהל")
     
     commands_text = "\n".join(commands)
     help_text = (
@@ -204,7 +204,7 @@ async def help_command(update: Update, context):
     await update.message.reply_text(
         help_text,
         parse_mode='HTML',
-        reply_markup=main_menu_keyboard(is_admin=is_admin)
+        reply_markup=main_menu_keyboard()
     )
 
 async def show_settings(update: Update, context):
@@ -233,30 +233,64 @@ async def show_settings(update: Update, context):
     )
 
 async def stats_command(update: Update, context):
-    """הצגת סטטיסטיקות אדמין"""
+    """הצגת סטטיסטיקות משתמש"""
     user = update.effective_user
+    if not user:
+        return
     query = update.callback_query
-    is_admin = is_admin_user(user.id if user else None)
-
     if query:
         await query.answer()
 
-    async def _respond(text: str):
-        if query:
-            await query.edit_message_text(
-                text,
-                parse_mode='HTML',
-                reply_markup=back_button("back_main")
-            )
-        else:
-            await update.message.reply_text(
-                text,
-                parse_mode='HTML',
-                reply_markup=back_button("back_main")
-            )
+    stats = db.get_user_statistics(user.id)
+    category_lookup = db.get_category_lookup(user.id)
+    user_stats = stats.get('user', {})
+
+    text = "📊 <b>הסטטיסטיקות שלך</b>\n\n"
+    text += f"📋 סה״כ פרומפטים: <b>{user_stats.get('total_prompts', 0)}</b>\n"
+    text += f"🔢 סה״כ שימושים: <b>{user_stats.get('total_uses', 0)}</b>\n"
+    text += f"⭐ מועדפים: <b>{db.count_prompts(user.id, is_favorite=True)}</b>\n\n"
+
+    categories = stats.get('categories') or []
+    tags = stats.get('tags') or []
+
+    if categories:
+        text += "📁 <b>קטגוריות מובילות:</b>\n"
+        for cat in categories[:5]:
+            emoji = category_lookup.get(cat['_id'], '📁')
+            text += f"  {emoji} {cat['_id']}: {cat['count']}\n"
+        text += "\n"
+
+    if tags:
+        text += "🏷️ <b>תגיות פופולריות:</b>\n"
+        for tag in tags[:5]:
+            text += f"  #{tag['_id']}: {tag['count']}\n"
+
+    if query:
+        await query.edit_message_text(
+            text,
+            parse_mode='HTML',
+            reply_markup=back_button("back_main")
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode='HTML',
+            reply_markup=back_button("back_main")
+        )
+
+
+async def admin_stats_command(update: Update, context):
+    """הצגת סטטיסטיקות אדמין (/statsA)"""
+    user = update.effective_user
+    if not user:
+        return
+    is_admin = is_admin_user(user.id)
 
     if not is_admin:
-        await _respond("⚠️ הפקודה זמינה רק למנהל המערכת.")
+        await update.message.reply_text(
+            "⚠️ הפקודה זמינה רק למנהל המערכת.",
+            reply_markup=back_button("back_main")
+        )
         return
 
     stats = db.get_admin_statistics(days=7)
@@ -293,7 +327,11 @@ async def stats_command(update: Update, context):
     else:
         text += "⚙️ אין נתוני פעולות להצגה."
 
-    await _respond(text)
+    await update.message.reply_text(
+        text,
+        parse_mode='HTML',
+        reply_markup=back_button("back_main")
+    )
 
 async def trash_command(update: Update, context):
     """הצגת סל מחזור"""
@@ -390,8 +428,6 @@ async def button_handler(update: Update, context):
     """טיפול בלחיצות על כפתורים"""
     query = update.callback_query
     data = query.data
-    user = update.effective_user
-    is_admin = is_admin_user(user.id if user else None)
     
     # חזרה לתפריט ראשי
     if data == "back_main":
@@ -399,7 +435,7 @@ async def button_handler(update: Update, context):
         await query.edit_message_text(
             "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
             parse_mode='HTML',
-            reply_markup=main_menu_keyboard(is_admin=is_admin)
+            reply_markup=main_menu_keyboard()
         )
         return
     
@@ -420,20 +456,18 @@ async def button_handler(update: Update, context):
 async def back_to_main(update: Update, context):
     """סיום כל שיחה פעילה וחזרה לתפריט הראשי."""
     query = update.callback_query
-    user = update.effective_user
-    is_admin = is_admin_user(user.id if user else None)
     if query:
         await query.answer()
         await query.edit_message_text(
             "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
             parse_mode='HTML',
-            reply_markup=main_menu_keyboard(is_admin=is_admin)
+            reply_markup=main_menu_keyboard()
         )
     else:
         await update.message.reply_text(
             "📋 <b>PromptTracker</b>\n\nבחר פעולה:",
             parse_mode='HTML',
-            reply_markup=main_menu_keyboard(is_admin=is_admin)
+            reply_markup=main_menu_keyboard()
         )
     return ConversationHandler.END
 
@@ -496,6 +530,7 @@ def main():
     application.add_handler(CommandHandler("list", view_my_prompts))
     application.add_handler(CommandHandler("view", handle_view_command_text))
     application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("statsA", admin_stats_command))
     application.add_handler(CommandHandler("trash", trash_command))
     application.add_handler(CommandHandler("restore", restore_command))
     application.add_handler(CommandHandler("search", start_search))
