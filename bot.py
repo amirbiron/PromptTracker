@@ -5,7 +5,7 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timezone
-from telegram import Update
+from telegram import Update, BotCommand, BotCommandScopeChat
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -79,6 +79,7 @@ from handlers.tags import (
     cancel_add_tag,
     WAITING_FOR_NEW_TAG
 )
+from utils import escape_html, is_admin_user
 
 # הגדרת logging
 logging.basicConfig(
@@ -134,6 +135,21 @@ def start_healthcheck_server():
     thread.start()
     logger.info("Health-check server is listening on port %s", port)
 
+
+async def setup_bot_commands(application: Application):
+    """Register admin-only command in Telegram's command menu."""
+    admin_id = config.ADMIN_USER_ID
+    if not admin_id:
+        return
+    bot = application.bot
+    try:
+        await bot.set_my_commands(
+            [BotCommand("statsa", "סטטיסטיקות מנהל")],
+            scope=BotCommandScopeChat(chat_id=admin_id)
+        )
+    except Exception as exc:
+        logger.warning("Failed setting admin command menu: %s", exc)
+
 # ========== פקודות בסיס ==========
 
 async def start_command(update: Update, context):
@@ -147,7 +163,6 @@ async def start_command(update: Update, context):
         first_name=user.first_name
     )
     
-    from utils import escape_html
     welcome_text = (
         f"👋 שלום {escape_html(user.first_name)}!\n\n"
         f"ברוך הבא ל-<b>PromptTracker</b> 🚀\n\n"
@@ -171,19 +186,29 @@ async def start_command(update: Update, context):
 
 async def help_command(update: Update, context):
     """פקודת /help"""
+    user = update.effective_user
+    is_admin = is_admin_user(user.id if user else None)
+    
+    commands = [
+        "🔹 /start - תפריט ראשי",
+        "🔹 /save - שמור פרומפט חדש",
+        "🔹 /list - הצג את כל הפרומפטים",
+        "🔹 /search - חיפוש פרומפטים",
+        "🔹 /favorites - פרומפטים מועדפים",
+        "🔹 /stats - סטטיסטיקות",
+        "🔹 /categories - קטגוריות",
+        "🔹 /tags - תגיות",
+        "🔹 /trash - סל מחזור",
+        "🔹 /settings - הגדרות"
+    ]
+    if is_admin:
+        commands.append("🔹 /statsA - סטטיסטיקות מנהל")
+    
+    commands_text = "\n".join(commands)
     help_text = (
         "📚 <b>עזרה - PromptTracker</b>\n\n"
         "<b>פקודות זמינות:</b>\n\n"
-        "🔹 /start - תפריט ראשי\n"
-        "🔹 /save - שמור פרומפט חדש\n"
-        "🔹 /list - הצג את כל הפרומפטים\n"
-        "🔹 /search - חיפוש פרומפטים\n"
-        "🔹 /favorites - פרומפטים מועדפים\n"
-        "🔹 /stats - סטטיסטיקות\n"
-        "🔹 /categories - קטגוריות\n"
-        "🔹 /tags - תגיות\n"
-        "🔹 /trash - סל מחזור\n"
-        "🔹 /settings - הגדרות\n\n"
+        f"{commands_text}\n\n"
         "<b>טיפים:</b>\n"
         "💡 אתה יכול להעביר (Forward) הודעות עם פרומפטים\n"
         "💡 השתמש בתגיות כדי לארגן טוב יותר\n"
@@ -223,37 +248,40 @@ async def show_settings(update: Update, context):
     )
 
 async def stats_command(update: Update, context):
-    """הצגת סטטיסטיקות"""
+    """הצגת סטטיסטיקות משתמש"""
     user = update.effective_user
-    # מענה מיידי ללחיצה על כפתור כדי למנוע חסימת לחיצות המשך בטלגרם
-    if update.callback_query:
-        await update.callback_query.answer()
+    if not user:
+        return
+    query = update.callback_query
+    if query:
+        await query.answer()
+
     stats = db.get_user_statistics(user.id)
     category_lookup = db.get_category_lookup(user.id)
-    
-    user_stats = stats['user']
-    
+    user_stats = stats.get('user', {})
+
     text = "📊 <b>הסטטיסטיקות שלך</b>\n\n"
     text += f"📋 סה״כ פרומפטים: <b>{user_stats.get('total_prompts', 0)}</b>\n"
     text += f"🔢 סה״כ שימושים: <b>{user_stats.get('total_uses', 0)}</b>\n"
     text += f"⭐ מועדפים: <b>{db.count_prompts(user.id, is_favorite=True)}</b>\n\n"
-    
-    # קטגוריות פופולריות
-    if stats['categories']:
+
+    categories = stats.get('categories') or []
+    tags = stats.get('tags') or []
+
+    if categories:
         text += "📁 <b>קטגוריות מובילות:</b>\n"
-        for cat in stats['categories'][:5]:
+        for cat in categories[:5]:
             emoji = category_lookup.get(cat['_id'], '📁')
             text += f"  {emoji} {cat['_id']}: {cat['count']}\n"
         text += "\n"
-    
-    # תגיות פופולריות
-    if stats['tags']:
+
+    if tags:
         text += "🏷️ <b>תגיות פופולריות:</b>\n"
-        for tag in stats['tags'][:5]:
+        for tag in tags[:5]:
             text += f"  #{tag['_id']}: {tag['count']}\n"
-    
-    if update.callback_query:
-        await update.callback_query.edit_message_text(
+
+    if query:
+        await query.edit_message_text(
             text,
             parse_mode='HTML',
             reply_markup=back_button("back_main")
@@ -264,6 +292,61 @@ async def stats_command(update: Update, context):
             parse_mode='HTML',
             reply_markup=back_button("back_main")
         )
+
+
+async def admin_stats_command(update: Update, context):
+    """הצגת סטטיסטיקות אדמין (/statsA)"""
+    user = update.effective_user
+    if not user:
+        return
+    is_admin = is_admin_user(user.id)
+
+    if not is_admin:
+        await update.message.reply_text(
+            "⚠️ הפקודה זמינה רק למנהל המערכת.",
+            reply_markup=back_button("back_main")
+        )
+        return
+
+    stats = db.get_admin_statistics(days=7)
+    user_actions = stats.get("user_actions", [])
+    max_rows = 25
+
+    def format_user(entry):
+        username = entry.get("username")
+        first_name = entry.get("first_name")
+        user_id = entry.get("user_id")
+        if username:
+            return f"@{escape_html(username)}"
+        if first_name:
+            return f"{escape_html(first_name)} (#{user_id})"
+        return f"משתמש #{user_id}"
+
+    text = (
+        "👑 <b>סטטיסטיקות מנהל</b>\n\n"
+        f"🆕 משתמשים חדשים (7 ימים אחרונים): <b>{stats.get('recent_users', 0)}</b>\n"
+        f"👥 סה\"כ משתמשים: <b>{stats.get('total_users', 0)}</b>\n\n"
+    )
+
+    if user_actions:
+        text += "⚙️ <b>פעולות לפי משתמש</b> (שמירות + שימושים)\n"
+        for entry in user_actions[:max_rows]:
+            label = format_user(entry)
+            text += (
+                f"• {label}: <b>{entry['action_count']}</b>\n"
+                f"  שמירות: {entry['total_prompts']} | שימושים: {entry['total_uses']}\n"
+            )
+        remaining = len(user_actions) - max_rows
+        if remaining > 0:
+            text += f"\n…ועוד {remaining} משתמשים נוספים."
+    else:
+        text += "⚙️ אין נתוני פעולות להצגה."
+
+    await update.message.reply_text(
+        text,
+        parse_mode='HTML',
+        reply_markup=back_button("back_main")
+    )
 
 async def trash_command(update: Update, context):
     """הצגת סל מחזור"""
@@ -454,7 +537,12 @@ def main():
         return
 
     # יצירת האפליקציה
-    application = Application.builder().token(config.BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(config.BOT_TOKEN)
+        .post_init(setup_bot_commands)
+        .build()
+    )
     
     # פקודות בסיס
     application.add_handler(CommandHandler("start", start_command))
@@ -462,6 +550,7 @@ def main():
     application.add_handler(CommandHandler("list", view_my_prompts))
     application.add_handler(CommandHandler("view", handle_view_command_text))
     application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler(["statsA", "statsa"], admin_stats_command))
     application.add_handler(CommandHandler("trash", trash_command))
     application.add_handler(CommandHandler("restore", restore_command))
     application.add_handler(CommandHandler("search", start_search))

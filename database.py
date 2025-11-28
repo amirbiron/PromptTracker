@@ -544,6 +544,51 @@ class Database:
             "categories": category_stats,
             "tags": tag_stats
         }
+
+    def get_admin_statistics(self, days: int = 7) -> Dict[str, Any]:
+        """
+        החזרת נתוני סטטיסטיקה גלובליים למנהל.
+
+        מספר משתמשים חדשים ב-X הימים האחרונים + מספר פעולות (שמירות + שימושים)
+        לכל משתמש.
+        """
+        since = datetime.utcnow() - timedelta(days=days)
+        recent_users = self.users.count_documents({
+            "created_at": {"$gte": since}
+        })
+        total_users = self.users.count_documents({})
+
+        user_actions: List[Dict[str, Any]] = []
+        cursor = self.users.find(
+            {},
+            {
+                "user_id": 1,
+                "username": 1,
+                "first_name": 1,
+                "stats": 1
+            }
+        )
+        for doc in cursor:
+            stats = doc.get("stats") or {}
+            total_prompts = int(stats.get("total_prompts") or 0)
+            total_uses = int(stats.get("total_uses") or 0)
+            action_count = total_prompts + total_uses
+            user_actions.append({
+                "user_id": doc.get("user_id"),
+                "username": doc.get("username"),
+                "first_name": doc.get("first_name"),
+                "total_prompts": total_prompts,
+                "total_uses": total_uses,
+                "action_count": action_count
+            })
+
+        user_actions.sort(key=lambda item: (item["action_count"], item["total_uses"]), reverse=True)
+
+        return {
+            "recent_users": recent_users,
+            "total_users": total_users,
+            "user_actions": user_actions
+        }
     
     # ========== ניקוי ==========
     

@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from urllib.parse import quote_plus
 import config
 
+
 def main_menu_keyboard():
     """תפריט ראשי"""
     keyboard = [
