@@ -79,7 +79,7 @@ from handlers.tags import (
     cancel_add_tag,
     WAITING_FOR_NEW_TAG
 )
-from utils import escape_html, is_admin_user
+from utils import escape_html, code_inline, is_admin_user
 
 # הגדרת logging
 logging.basicConfig(
@@ -145,7 +145,8 @@ async def setup_bot_commands(application: Application):
     try:
         admin_commands = [
             BotCommand("start", "מתחילים ✅"),
-            BotCommand("statsa", "סטטיסטיקות מנהל")
+            BotCommand("statsa", "סטטיסטיקות מנהל"),
+            BotCommand("debug_saves", "תצוגת שמירות (דיבאג)")
         ]
         await bot.set_my_commands(
             admin_commands,
@@ -345,6 +346,102 @@ async def admin_stats_command(update: Update, context):
             text += f"\n…ועוד {remaining} משתמשים נוספים."
     else:
         text += "⚙️ אין נתוני פעולות להצגה."
+
+    await update.message.reply_text(
+        text,
+        parse_mode='HTML',
+        reply_markup=back_button("back_main")
+    )
+
+
+async def debug_user_saves_command(update: Update, context):
+    """פקודת דיבאג להצגת שמירות משתמש ספציפי."""
+    user = update.effective_user
+    if not user or not is_admin_user(user.id):
+        await update.message.reply_text(
+            "⚠️ הפקודה זמינה רק למנהל המערכת.",
+            reply_markup=back_button("back_main")
+        )
+        return
+
+    args = getattr(context, "args", None) or []
+    if not args:
+        await update.message.reply_text(
+            "⚠️ שימוש: /debug_saves <user_id|@username> [limit]",
+            reply_markup=back_button("back_main")
+        )
+        return
+
+    identifier = args[0]
+
+    def _parse_limit(raw_value: str) -> int:
+        value = raw_value or ""
+        # תומך בצורה limit=10 או רק הספרה
+        if "=" in value:
+            key, val = value.split("=", 1)
+            if key.lower() in {"limit", "l"}:
+                value = val
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return 5
+        return max(1, min(parsed, 20))
+
+    limit = 5
+    if len(args) > 1:
+        limit = _parse_limit(args[1])
+
+    target_user = db.find_user_by_identifier(identifier)
+    if not target_user:
+        await update.message.reply_text(
+            "⚠️ המשתמש לא נמצא במסד הנתונים.",
+            reply_markup=back_button("back_main")
+        )
+        return
+
+    target_user_id = target_user.get("user_id")
+    if target_user_id is None:
+        await update.message.reply_text(
+            "⚠️ אין מזהה משתמש תקין במסמך שנמצא.",
+            reply_markup=back_button("back_main")
+        )
+        return
+
+    total_prompts = db.count_prompts(target_user_id)
+    prompts = db.get_all_prompts(target_user_id, skip=0, limit=limit)
+
+    display_name = target_user.get("username") or target_user.get("first_name") or "ללא שם"
+    text = (
+        "🛠️ <b>דיבאג שמירות משתמש</b>\n\n"
+        f"👤 משתמש: {escape_html(display_name)}\n"
+        f"🆔 ID: {code_inline(target_user_id)}\n"
+        f"📊 שמירות פעילות: <b>{total_prompts}</b>\n"
+        f"📄 מציג עד {limit} האחרונות.\n\n"
+    )
+
+    if not prompts:
+        text += "אין פרומפטים פעילים להצגה."
+    else:
+        category_lookup = db.get_category_lookup(target_user_id)
+        for idx, prompt in enumerate(prompts, 1):
+            title = prompt.get("title") or "ללא כותרת"
+            short_code = prompt.get("short_code") or str(prompt.get("_id"))
+            created_at = prompt.get("created_at")
+            try:
+                created_str = created_at.strftime("%d/%m/%Y %H:%M") if created_at else "-"
+            except Exception:
+                created_str = "-"
+            category = prompt.get("category")
+            emoji = category_lookup.get(category, "📁") if category else "📁"
+            content_snippet = prompt.get("content") or ""
+            if len(content_snippet) > 120:
+                content_snippet = content_snippet[:120] + "..."
+            text += (
+                f"{idx}. <b>{escape_html(title)}</b>\n"
+                f"   {emoji} {escape_html(category or 'ללא קטגוריה')} | {created_str}\n"
+                f"   short: {code_inline(short_code)}\n"
+                f"   {escape_html(content_snippet or 'ללא טקסט')}\n\n"
+            )
 
     await update.message.reply_text(
         text,
@@ -555,6 +652,7 @@ def main():
     application.add_handler(CommandHandler("view", handle_view_command_text))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler(["statsA", "statsa"], admin_stats_command))
+    application.add_handler(CommandHandler("debug_saves", debug_user_saves_command))
     application.add_handler(CommandHandler("trash", trash_command))
     application.add_handler(CommandHandler("restore", restore_command))
     application.add_handler(CommandHandler("search", start_search))

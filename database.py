@@ -130,6 +130,35 @@ class Database:
             user["categories"] = categories
         
         return user
+
+    def find_user_by_identifier(self, identifier: Optional[str]) -> Optional[Dict]:
+        """איתור משתמש לפי user_id או שם משתמש (עם או בלי @)."""
+        if identifier is None:
+            return None
+        value = str(identifier).strip()
+        if not value:
+            return None
+
+        # ניסיון לפי מזהה מספרי
+        if value.isdigit():
+            try:
+                user_id = int(value)
+            except ValueError:
+                user_id = None
+            if user_id is not None:
+                user = self.users.find_one({"user_id": user_id})
+                if user:
+                    return user
+
+        # ניסיון לפי שם משתמש
+        username = value[1:] if value.startswith("@") else value
+        if not username:
+            return None
+        try:
+            regex = rf"^{re.escape(username)}$"
+        except re.error:
+            return None
+        return self.users.find_one({"username": {"$regex": regex, "$options": "i"}})
     
     def update_user_stats(self, user_id: int, stat_name: str, increment: int = 1):
         """עדכון סטטיסטיקות משתמש"""
