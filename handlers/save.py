@@ -8,6 +8,7 @@ from database import db
 from keyboards import category_keyboard, prompt_actions_keyboard, back_button
 import config
 from utils import escape_html
+from reporter_instance import reporter
 
 # States for conversation
 WAITING_FOR_PROMPT, WAITING_FOR_TITLE, WAITING_FOR_CATEGORY = range(3)
@@ -38,6 +39,7 @@ async def start_save_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_prompt_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """קבלת תוכן הפרומפט"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     user = update.effective_user
     content = update.message.text or update.message.caption
     

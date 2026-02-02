@@ -17,6 +17,7 @@ from keyboards import (
 import config
 from bson import ObjectId
 from utils import escape_html, code_block, code_inline
+from reporter_instance import reporter
 
 # States
 EDITING_CONTENT, EDITING_TITLE = range(2)
@@ -24,6 +25,7 @@ CHANGING_CATEGORY = 2
 
 async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """הצגת רשימת הפרומפטים"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     query = update.callback_query
     if query:
         await query.answer()
@@ -98,6 +100,7 @@ async def view_my_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """הצגת פרומפט מלא"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     query = update.callback_query
     prompt_id = None
     if query:
@@ -170,6 +173,7 @@ async def view_prompt_details(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_view_command_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """תמיכה בפקודת /view וב-/view_<id> הנשלחים כטקסט"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     message = update.message
     prompt_id = None
 
@@ -192,6 +196,7 @@ async def handle_view_command_text(update: Update, context: ContextTypes.DEFAULT
 
 async def copy_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """העתקת פרומפט"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     query = update.callback_query
     await query.answer()
     
