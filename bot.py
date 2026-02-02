@@ -16,6 +16,7 @@ from telegram.ext import (
 )
 
 import config
+from reporter_instance import reporter
 from distributed_lock import MongoDistributedLock
 from database import db
 from keyboards import main_menu_keyboard, back_button
@@ -159,6 +160,7 @@ async def setup_bot_commands(application: Application):
 
 async def start_command(update: Update, context):
     """פקודת /start"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     user = update.effective_user
     
     # יצירת/עדכון משתמש

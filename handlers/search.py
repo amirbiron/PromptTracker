@@ -7,6 +7,7 @@ from urllib.parse import quote_plus, unquote_plus
 from database import db
 from keyboards import category_keyboard, back_button, main_menu_keyboard
 from utils import escape_html
+from reporter_instance import reporter
 
 CATEGORY_ADDING, CATEGORY_RENAMING = range(2)
 SEARCH_FLAG = "awaiting_search_query"
@@ -61,6 +62,7 @@ async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_search_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """קבלת שאילתת חיפוש כאשר מצב החיפוש פעיל"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     if not context.user_data.get(SEARCH_FLAG):
         return
 

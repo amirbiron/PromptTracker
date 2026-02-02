@@ -7,12 +7,14 @@ from database import db
 from keyboards import tag_management_keyboard, back_button
 import config
 from utils import escape_html
+from reporter_instance import reporter
 
 # States
 WAITING_FOR_NEW_TAG = 0
 
 async def manage_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ניהול תגיות של פרומפט"""
+    update.effective_user and reporter.report_activity(update.effective_user.id)
     query = update.callback_query
     await query.answer()
     
